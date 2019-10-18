@@ -12,7 +12,7 @@ import glob
 import re
 
 working_directory = '/home/jszou/cs/keenan/'
-fluxnet_directory = 'testnet/'
+fluxnet_directory = 'fluxnet/'
 visualizations_directory = 'viz'
 training_output_directory = 'out'
 

@@ -37,7 +37,7 @@ def train_lstm_on_site(zip_info):
         processed[variables].to_numpy(), processed[labels].to_numpy(), test_size=test_size, shuffle=False)
 
     # do grid search for best model
-    tuned_parameters = [{'input_dim': [num_key_variables], 'output_dim': [1], 'hidden_dim': [256, 512, 1024], 'n_layers': [2,3,4,5], 'batch_size': [1, 10, 100], 
+    tuned_parameters = [{'input_dim': [num_key_variables], 'output_dim': [1], 'hidden_dim': [num_key_variables, 50, 100, 256], 'n_layers': [2,3,4,5], 'batch_size': [1, 10, 100], 
                         'seq_len': [5, 10, 15, 20, 25, 30], 'clip': [5, 10], 'epochs': [2, 3, 4, 5, 10], 'lr': [0.05, 0.005, 0.0005, 0.00005, 0.000005]}]
     # tuned_parameters = [{'input_dim': [num_key_variables], 'output_dim': [1], 'hidden_dim': [512], 'n_layers': [4], 'batch_size': [1], 
     #                     'seq_len': [5], 'clip': [5], 'epochs': [5], 'lr': [0.0005]}]
