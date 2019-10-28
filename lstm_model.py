@@ -4,7 +4,7 @@ from torch.utils.data.sampler import Sampler
 import random
 
 class SimpleLSTM(nn.Module):
-    def __init__(self, input_size, output_size, hidden_dim, n_layers, drop_prob=0.5):
+    def __init__(self, input_size, output_size, hidden_dim, n_layers, drop_prob=0.0):
         super(SimpleLSTM, self).__init__()
         self.output_size = output_size
         self.n_layers = n_layers
@@ -17,14 +17,11 @@ class SimpleLSTM(nn.Module):
         
     def forward(self, x, hidden):
         batch_size = x.size(0)
-        lstm_out, hidden = self.lstm(x, hidden)
-        lstm_out = lstm_out.contiguous().view(-1, self.hidden_dim)
+        all_cell_state, hidden = self.lstm(x, hidden)
+        lstm_out = all_cell_state.contiguous().view(-1, self.hidden_dim)
         
-        out = self.dropout(lstm_out)
-        out = self.fc(out)
-        
-        out = out.view(batch_size, -1)
-        return out, hidden
+        out = self.fc(self.dropout(lstm_out)).view(batch_size, -1) 
+        return out, hidden, all_cell_state.data
     
     def init_hidden(self, batch_size):
         weight = next(self.parameters()).data
@@ -38,7 +35,7 @@ class TimeseriesSampler(Sampler):
 
     	time_index (numpy.Array)
     """
-    def __init__(self, time_index, window_size=5, step_size=1, shuffle=False):
+    def __init__(self, time_index, window_size=5, step_size=1):
         self.time_index = time_index
         self.windows = []
         i = 0
@@ -53,18 +50,6 @@ class TimeseriesSampler(Sampler):
         		self.windows.append(list(range(left_bound, i+1)))
         		left_bound += 1
         	i+=1
-        # print(time_index)
-        # print(self.windows)
-        # mappings = []
-        # for window in self.windows:
-        # 	mapping = []
-        # 	for index in window:
-        # 		mapping.append(time_index[index])
-        # 	mappings.append(mapping)
-        # print(mappings)
-        if shuffle:
-            random.shuffle(self.windows)
-
         
     def __iter__(self):
         return iter(self.windows)
