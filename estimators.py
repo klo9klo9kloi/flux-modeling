@@ -25,25 +25,25 @@ class SimpleLSTMRegressor(BaseEstimator):
 		self.scoring = scoring
 	
 	def get_params(self, deep=False):
-		return {"lr": self.lr, "batch_size": self.batch_size, "seq_len": self.sequence_length, "epochs": self.epochs, "clip": self.clip, "input_dim": self.input_dim, "output_dim": self.output_dim, "hidden_dim": self.hidden_dim, "n_layers": self.n_layers}
+		return {"lr": self.lr, "batch_size": self.batch_size, "seq_len": self.sequence_length, "epochs": self.epochs, "clip": self.clip, "input_dim": self.input_dim, "output_dim": self.output_dim, "hidden_dim": self.hidden_dim, "n_layers": self.n_layers, "scoring": self.scoring}
 
 	def set_params(self, **params):
-		self.lr = params.get('lr', 0.05)
-		self.batch_size = params.get('batch_size', 1)
-		self.sequence_length = params.get('seq_len', 1)
-		self.epochs = params.get('epochs', 5)
-		self.clip = params.get('clip', 5)
+		self.lr = params.get('lr', self.lr)
+		self.batch_size = params.get('batch_size', self.batch_size)
+		self.sequence_length = params.get('seq_len', self.sequence_length)
+		self.epochs = params.get('epochs', self.epochs)
+		self.clip = params.get('clip', self.clip)
 		self.input_dim = params.get('input_dim', self.input_dim)
 		self.output_dim = params.get('output_dim', self.output_dim)
-		self.hidden_dim = params.get('hidden_dim', 32)
-		self.n_layers = params.get('n_layers', 1)
-		self.scoring = params.get('scoring', 'r2')
+		self.hidden_dim = params.get('hidden_dim', self.hidden_dim)
+		self.n_layers = params.get('n_layers', self.n_layers)
+		self.scoring = params.get('scoring', self.scoring)
 		return self
 
 	def fit(self, X, y, **kwargs):
 		self.model = lstm.SimpleLSTM(self.input_dim, self.output_dim, self.hidden_dim, self.n_layers)
 		# the last column of X is the time_index column, which we dont want to train on
-		data = TensorDataset(torch.from_numpy(X[:, :-1]), torch.from_numpy(y))
+		data = TensorDataset(torch.from_numpy(X[:, :-1].astype('float64')), torch.from_numpy(y.astype('float64')))
 		loader = DataLoader(data, shuffle=False, batch_size=self.batch_size, sampler=lstm.TimeseriesSampler(X[:, -1:].squeeze().astype('int'), self.sequence_length))
 		
 		is_cuda = torch.cuda.is_available()
@@ -51,6 +51,7 @@ class SimpleLSTMRegressor(BaseEstimator):
 			device = torch.device("cuda")
 		else:
 			device = torch.device("cpu")
+		self.model.double()
 		self.model.to(device)
 
 		#set up loss function and optimizer
@@ -70,7 +71,7 @@ class SimpleLSTMRegressor(BaseEstimator):
 				output, h, _ = self.model(inpts, h)
 
 				# we only care about the last output for now
-				loss = criterion(output[:, -1], lbls.float()[:, -1])
+				loss = criterion(output.view(inpts.size(0), -1)[:, -1], lbls.view(inpts.size(0), -1)[:, -1])
 				loss.backward()
 				nn.utils.clip_grad_norm_(self.model.parameters(), self.clip)
 				optimizer.step()
@@ -78,7 +79,7 @@ class SimpleLSTMRegressor(BaseEstimator):
 		return self
 
 	def predict(self, X, **kwargs):
-		data = TensorDataset(torch.from_numpy(X[:, :-1]))
+		data = TensorDataset(torch.from_numpy(X[:, :-1].astype('float64')))
 		loader = DataLoader(data, shuffle=False, batch_size=self.batch_size, sampler=lstm.TimeseriesSampler(X[:, -1:].squeeze().astype('int'), self.sequence_length))
 		
 		is_cuda = torch.cuda.is_available()
@@ -86,7 +87,8 @@ class SimpleLSTMRegressor(BaseEstimator):
 			device = torch.device("cuda")
 		else:
 			device = torch.device("cpu")
-
+		self.model.double()
+		self.model.to(device)
 		self.model.eval()
 		
 		predictions = []
@@ -96,6 +98,7 @@ class SimpleLSTMRegressor(BaseEstimator):
 			h = tuple([e.to(device).data for e in h])
 			inp = inp.to(device)
 			out, h, _ = self.model(inp, h)
+			out = out.view(inp.size(0), -1)
 			if out.size(0) == 1:
 				predictions.append(out.squeeze()[-1].item())
 			else:
@@ -107,19 +110,28 @@ class SimpleLSTMRegressor(BaseEstimator):
 		n = len(time_index)
 		if self.sequence_length >= n:
 			raise ValueError("Sequence length is greater than size of test data -> cannot evaluate on test data")
-		predictions = self.predict(X, **kwargs)
-		truth = y[self.sequence_length-1:]
+		predictions = np.nan_to_num(np.array(self.predict(X, **kwargs), dtype='float64'))
+		truth = np.nan_to_num(y[self.sequence_length-1:])
 		if self.scoring == 'r2':
 			return r2_score(truth, predictions)
 		elif self.scoring == 'mda':
-			return mda(truth, np.array(predictions))
-		elif self.scroing == 'l1':
-			return mean_absolute_error(truth, predictions)
+			return mda(truth, predictions)
+		elif self.scoring == 'l1':
+			return -mean_absolute_error(truth, predictions)
 		else:
-			return mean_squared_error(truth, predictions)
+			return -mean_squared_error(truth, predictions)
+
+	def r2_score(self, X, y, **kwargs):
+		time_index = X[:, -1:].squeeze().astype('int')
+		n = len(time_index)
+		if self.sequence_length >= n:
+			raise ValueError("Sequence length is greater than size of test data -> cannot evaluate on test data")
+		predictions = np.nan_to_num(np.array(self.predict(X, **kwargs), dtype='float64'))
+		truth = np.nan_to_num(y[self.sequence_length-1:])
+		return r2_score(truth, predictions)
 
 	def get_cell_state_data(self, X):
-		data = TensorDataset(torch.from_numpy(X[:, :-1]))
+		data = TensorDataset(torch.from_numpy(X[:, :-1].astype('float64')))
 		loader = DataLoader(data, shuffle=False, batch_size=self.batch_size, sampler=lstm.TimeseriesSampler(X[:, -1:].squeeze().astype('int'), self.sequence_length))
 		
 		is_cuda = torch.cuda.is_available()
@@ -128,6 +140,8 @@ class SimpleLSTMRegressor(BaseEstimator):
 		else:
 			device = torch.device("cpu")
 
+		self.model.double()
+		self.model.to(device)
 		self.model.eval()
 		cell_state_data = []
 

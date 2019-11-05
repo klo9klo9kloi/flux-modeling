@@ -118,7 +118,7 @@ def generate_file_output(output_strings, site_name):
 def generate_weights_visualization(model, variables, site_name):
     param_list = list(model.model.parameters())
     dim = model.model.hidden_dim
-    input_weights = param_list[0].data
+    input_weights = param_list[0].data.cpu()
     ii_weights = input_weights[:dim]
     if_weights = input_weights[dim:dim*2]
     ig_weights = input_weights[dim*2:dim*3]
