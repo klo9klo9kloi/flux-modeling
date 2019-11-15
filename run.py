@@ -8,7 +8,8 @@ if __name__ == '__main__':
 	# with Pool(5) as p:
 	# 	p.map(train_lstm_on_site, zip_file_info_for_preprocessing)
 	for zf in zip_file_info_for_preprocessing:
-		train_lstm_on_site(zf)
+		if zf[0] == 'AU-Gin':
+			train_lstm_on_site(zf)
 
 
 # idea for global scale: use first 75% of each sites data as training folds, then use the aggregate of 25% of each site as the test fold

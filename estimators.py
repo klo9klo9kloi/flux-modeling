@@ -12,7 +12,7 @@ def mda(actual: np.ndarray, predicted: np.ndarray):
 
 class SimpleLSTMRegressor(BaseEstimator):
 	# seq len corresponds to how big we want the 'memory window' of our model to be
-	def __init__(self, input_dim, output_dim, hidden_dim=512, n_layers=1, lr=0.05, batch_size=1, seq_len = 5, epochs = 10, clip = 5, scoring='mse'):
+	def __init__(self, input_dim, output_dim, hidden_dim=512, n_layers=1, lr=0.05, batch_size=1, seq_len = 5, epochs = 50, threshold=1e-5, clip = 5, scoring='mse'):
 		self.lr = lr
 		self.batch_size = batch_size
 		self.sequence_length = seq_len
@@ -23,9 +23,18 @@ class SimpleLSTMRegressor(BaseEstimator):
 		self.hidden_dim = hidden_dim
 		self.n_layers = n_layers
 		self.scoring = scoring
+		self.threshold = threshold
+
+	def stop_condition(self, iteration, loss_diff):
+		if loss_diff <= self.threshold:
+			return True
+		return False
 	
 	def get_params(self, deep=False):
-		return {"lr": self.lr, "batch_size": self.batch_size, "seq_len": self.sequence_length, "epochs": self.epochs, "clip": self.clip, "input_dim": self.input_dim, "output_dim": self.output_dim, "hidden_dim": self.hidden_dim, "n_layers": self.n_layers, "scoring": self.scoring}
+		return {"lr": self.lr, "batch_size": self.batch_size, 
+				"seq_len": self.sequence_length, "epochs": self.epochs, "clip": self.clip, 
+				"input_dim": self.input_dim, "output_dim": self.output_dim, "hidden_dim": self.hidden_dim, 
+				"n_layers": self.n_layers, "scoring": self.scoring, "threshold": self.threshold}
 
 	def set_params(self, **params):
 		self.lr = params.get('lr', self.lr)
@@ -38,12 +47,15 @@ class SimpleLSTMRegressor(BaseEstimator):
 		self.hidden_dim = params.get('hidden_dim', self.hidden_dim)
 		self.n_layers = params.get('n_layers', self.n_layers)
 		self.scoring = params.get('scoring', self.scoring)
+		self.threshold = params.get('threshold', self.threshold)
 		return self
 
 	def fit(self, X, y, **kwargs):
 		self.model = lstm.SimpleLSTM(self.input_dim, self.output_dim, self.hidden_dim, self.n_layers)
 		# the last column of X is the time_index column, which we dont want to train on
-		data = TensorDataset(torch.from_numpy(X[:, :-1].astype('float64')), torch.from_numpy(y.astype('float64')))
+		all_training_data = torch.from_numpy(X[:, :-1].astype('float64'))
+		all_training_labels = torch.from_numpy(y.astype('float64'))
+		data = TensorDataset(all_training_data, all_training_labels)
 		loader = DataLoader(data, shuffle=False, batch_size=self.batch_size, sampler=lstm.TimeseriesSampler(X[:, -1:].squeeze().astype('int'), self.sequence_length))
 		
 		is_cuda = torch.cuda.is_available()
@@ -58,9 +70,11 @@ class SimpleLSTMRegressor(BaseEstimator):
 		criterion = nn.MSELoss()
 		optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 		
-		self.model.train()
 		# train
+		prev_loss = np.inf
 		for i in range(self.epochs):
+			#train on one pass of data
+			self.model.train()
 			for inpts, lbls in loader:
 				# input should be 3d tensor of shape (batch_size, seq_len, input_dim)
 				optimizer.zero_grad()
@@ -69,13 +83,30 @@ class SimpleLSTMRegressor(BaseEstimator):
 				inpts, lbls = inpts.to(device), lbls.to(device)
 				self.model.zero_grad()
 				output, h, _ = self.model(inpts, h)
-
-				# we only care about the last output for now
-				loss = criterion(output.view(inpts.size(0), -1)[:, -1], lbls.view(inpts.size(0), -1)[:, -1])
+				loss = criterion(output.view(inpts.size(0), -1), lbls.view(inpts.size(0), -1))
 				loss.backward()
 				nn.utils.clip_grad_norm_(self.model.parameters(), self.clip)
 				optimizer.step()
-			print("Epoch: {}/{}...".format(i+1, self.epochs), "Loss: {:.6f}...".format(loss.item()))
+			print("Epoch: {}/{}...".format(i+1, self.epochs))
+
+			# #evaluate total training loss and check stopping condition
+			# self.model.eval()
+			# total_loss = 0
+			# with torch.no_grad():		
+			# 	for inpts, lbls in loader:
+			# 		# input should be 3d tensor of shape (batch_size, seq_len, input_dim)
+			# 		h = self.model.init_hidden(inpts.size(0))
+			# 		h = tuple([e.to(device).data for e in h])
+			# 		inpts, lbls = inpts.to(device), lbls.to(device)
+			# 		output, h, _ = self.model(inpts, h)
+
+			# 		total_loss += criterion(output.view(inpts.size(0), -1)[-1], lbls.view(inpts.size(0), -1)[-1])
+			# 	total_loss = total_loss/len(loader)
+			# 	print("Epoch: {}/{}...".format(i+1, self.epochs), "Loss: {:.6f}...".format(total_loss.item()))
+			# if self.stop_condition(i, np.abs(total_loss-prev_loss)):
+			# 	break
+			# prev_loss = total_loss
+		self.trained_for = i
 		return self
 
 	def predict(self, X, **kwargs):
