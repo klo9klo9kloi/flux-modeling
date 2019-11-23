@@ -12,7 +12,7 @@ import glob
 import re
 import torch
 from torch.utils.data import TensorDataset, DataLoader
-from lstm_model import TimeseriesSampler
+from models import TimeseriesSampler
 from test_script import train_autoencoder
 from scipy.io import loadmat
 from scipy.interpolate import interp1d
@@ -32,7 +32,7 @@ def get_zip_name(site_name, year_range, something):
             + year_range + '_' + something + '.zip'
 
 # granularity = 'YY', 'MM', 'WW', 'DD', 'HH' for yearly, monthly, weekly, daily, hourly respectively
-def preprocess(site_name, set_type, year_range, something, granularity, target_variables, backup_variables, labels, debug_output):
+def preprocess(site_name, set_type, year_range, something, granularity, target_variables, backup_variables, labels, debug_output, offset=False):
     zf = zipfile.ZipFile(get_zip_name(site_name, year_range, something))
     filename = "FLX_" + site_name + "_FLUXNET2015_" + set_type + "_" + granularity + "_" \
                 + year_range + "_" + something + ".csv"
@@ -44,9 +44,15 @@ def preprocess(site_name, set_type, year_range, something, granularity, target_v
     zf.close()
 
     frame['time_index'] = frame.index
-    # set up data so that label to be predicted is the value 1 day later
-    for label in labels:
-        frame[label+'_train'] = frame[label].iloc[1:].reset_index()[label]
+
+    if offset:
+       # set up data so that label to be predicted is the value 1 day later
+        for label in labels:
+            frame[label+'_train'] = frame[label].iloc[1:].reset_index()[label]
+    else:
+        for label in labels:
+            frame[label+'_train'] = frame[label]
+
 
     # print(frame.head())
     # print(frame.iloc[-1])
@@ -73,7 +79,7 @@ def preprocess(site_name, set_type, year_range, something, granularity, target_v
     frame = pd.merge(frame, fpar_frame, how='left', on='TIMESTAMP')
     variables.append(fAPAR_VAR_NAME)
 
-    
+    # we do this at the end to ensure its the last one in the list for processing purposes
     variables.append('time_index')
 
     return frame, variables
@@ -81,9 +87,10 @@ def preprocess(site_name, set_type, year_range, something, granularity, target_v
 # data: DataFrame
 # variable: String
 def validate_variable(data, variable):
-    return (variable in data.columns)
+    return (variable in data.columns) and (data[variable].value_counts().get('-9999', 0) <= len(data.index)/2)
 
 def validate_frame(df, variables):
+    print(len(df.index))
     assert(len(df.index) >= 100)
     for v in variables:
         if df[v].value_counts().get('-9999', 0) != 0:
@@ -145,10 +152,7 @@ def split_dataset(df, train_prop, k):
         val.append(val_index)
     return train, val, split_index
 
-def generate_visualizations(model, time_index, ground_truth, test_set, train_set, sequence_length, granularity, start_date, pred_label, site_name):
-    y_pred = model.predict(test_set) #can call predict directly because refit=True
-    train_pred = model.predict(train_set)
-
+def generate_visualizations(time_index, ground_truth, test_pred, train_pred, sequence_length, granularity, start_date, pred_label, site_name):
     # have to fill some nans. the first seq_len entries for train will be empty because used for lstm memory. 
     # the last training prediction will bleed into the first entry used for memory by test predictions.
     # the last test prediction is beyond the scope of our ground truth since it predicts the day after, so we choose to not plot it for now
@@ -167,9 +171,9 @@ def generate_visualizations(model, time_index, ground_truth, test_set, train_set
     plt.xlabel(granularity_to_string[granularity] + ' since ' + start_date)
     plt.ylabel(pred_label)
     sns.lineplot(x=time_index, y=ground_truth, label='ground truth')
-    sns.lineplot(x=time_index[sequence_length: (sequence_length + len(train_pred))], y=train_pred, 
+    sns.lineplot(x=time_index[0: len(train_pred)], y=train_pred, 
                  label='train predictions')
-    sns.lineplot(x=time_index[2*sequence_length+len(train_pred)-1:], y= y_pred[:-1],
+    sns.lineplot(x=time_index[len(train_pred):], y= test_pred,
                  label='test predictions', color='red')
 
     #TODO: generate visualization of model weights to see what its learning
@@ -177,8 +181,13 @@ def generate_visualizations(model, time_index, ground_truth, test_set, train_set
         os.makedirs(visualizations_directory + '/' + site_name)
     plt.savefig(visualizations_directory + '/' + site_name + '/predictions.png')
 
+    # total_fAPAR = np.append(train_set[:, -2:-1], test_set[:, -2:-1])
+    # plt.figure()
+    # sns.lineplot(x=time_index, y=total_fAPAR, label="fAPAR0", color="green")
+    plt.show()
+
     plt.figure()
-    total_pred = ([np.nan] * (sequence_length) ) + train_pred + ([np.nan] * (sequence_length-1) ) + y_pred[:-1]
+    total_pred = train_pred + test_pred
     plt.title('Residual Graph for ' + site_name)
     plt.ylabel('Residual')
     plt.xlabel(granularity_to_string[granularity] + ' since ' + start_date)

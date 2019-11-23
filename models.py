@@ -1,7 +1,20 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data.sampler import Sampler
 import random
+
+class SimpleANN(nn.Module):
+    def __init__(self, input_size, output_size, hidden_dim):
+        super(SimpleANN, self).__init__()
+        self.input = nn.Linear(input_size, hidden_dim)
+        self.hidden1 = nn.Linear(hidden_dim, hidden_dim)
+        self.output = nn.Linear(hidden_dim, output_size)
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        hidden_state = self.hidden1(F.relu(self.input(x)))
+        return self.output(F.relu(hidden_state)).view(batch_size, -1)
 
 class SimpleLSTM(nn.Module):
     def __init__(self, input_size, output_size, hidden_dim, n_layers, drop_prob=0.0):
@@ -9,24 +22,21 @@ class SimpleLSTM(nn.Module):
         self.output_size = output_size
         self.n_layers = n_layers
         self.hidden_dim = hidden_dim
-        
         self.input_size = input_size
-        self.lstm = nn.LSTM(input_size, hidden_dim, n_layers, dropout=drop_prob, batch_first=True)
+
+        self.lstm = nn.LSTM(input_size, hidden_dim, n_layers, dropout=drop_prob)
         self.dropout = nn.Dropout(drop_prob)
         self.fc = nn.Linear(hidden_dim, output_size)
         
     def forward(self, x, hidden):
-        batch_size = x.size(0)
-        all_cell_state, hidden = self.lstm(x, hidden)
-        lstm_out = all_cell_state.contiguous().view(-1, self.hidden_dim)
-        
-        out = self.fc(self.dropout(lstm_out)).view(batch_size, -1) 
-        return out, hidden, all_cell_state.data
+        batch_size = x.size(1)
+        out, hidden = self.lstm(x, hidden)
+        out = self.fc(self.dropout(hidden[0].view(batch_size, self.hidden_dim)))
+        return out, hidden
     
     def init_hidden(self, batch_size):
-        weight = next(self.parameters()).data
-        hidden = (weight.new(self.n_layers, batch_size, self.hidden_dim).zero_(),
-                      weight.new(self.n_layers, batch_size, self.hidden_dim).zero_())
+        hidden = (torch.zeros(self.n_layers, batch_size, self.hidden_dim).double(),
+                      torch.zeros(self.n_layers, batch_size, self.hidden_dim).double())
         return hidden
 
 class TimeseriesSampler(Sampler):
@@ -35,7 +45,7 @@ class TimeseriesSampler(Sampler):
 
     	time_index (numpy.Array)
     """
-    def __init__(self, time_index, window_size=5, step_size=1):
+    def __init__(self, time_index, window_size=5, step_size=1, shuffle=False):
         self.time_index = time_index
         self.windows = []
         i = 0
@@ -50,6 +60,8 @@ class TimeseriesSampler(Sampler):
         		self.windows.append(list(range(left_bound, i+1)))
         		left_bound += 1
         	i+=1
+        if shuffle:
+           random.shuffle(self.windows)
         
     def __iter__(self):
         return iter(self.windows)
