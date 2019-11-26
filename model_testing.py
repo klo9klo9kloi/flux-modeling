@@ -42,13 +42,17 @@ def quantify_variability(zip_info):
     #                 clip = 5, scoring='mse', regularization_param=0.001)
     # model = SimpleANNRegressor(num_key_variables, 1, hidden_dim=num_key_variables, batch_size= 1, epochs=10, lr= 0.0005, regularization_param= 0.1)
     predictions = []
+    scores = []
     for i in range(5):
         model.fit(X_train, y_train)
         # model.fit(X_train[:, :-1], y_train)
-        y_test = ([np.nan] * (model.sequence_length-1) ) + model.predict(X_test)
-        # y_test = model.predict(X_test[:, :-1])
-        predictions.append(y_test)
+        test_pred = ([np.nan] * (model.sequence_length-1) ) + model.predict(X_test)
+        # test_pred = model.predict(X_test[:, :-1])
+        predictions.append(test_pred)
+        scores.append(model.score(X_test, y_test))
+
     df = pd.DataFrame(data=np.array(predictions), columns=X_test[:, -1])
+    df[model.scoring] = scores
     path = 'out/predictions'
     if not os.path.exists(path):
         os.makedirs(path)
