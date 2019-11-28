@@ -66,10 +66,10 @@ def train_lstm_on_site(zip_info):
         train_line = ([np.nan] * (best_model.sequence_length-1)) + y_train
     generate_visualizations(processed['time_index'].to_numpy().squeeze(), processed[labels].to_numpy().squeeze(), 
         test_line, train_line, clf.best_params_['seq_len'], granularity, 
-        data['TIMESTAMP'].iloc[0], labels, zip_info[0])
-    generate_file_output(file_output, zip_info[0])
+        data['TIMESTAMP'].iloc[0], labels, zip_info[1])
+    generate_file_output(file_output, zip_info[1])
 
-    generate_weights_visualization(best_model, variables[:-1], zip_info[0])
+    generate_weights_visualization(best_model, variables[:-1], zip_info[1])
 
 
 

@@ -31,9 +31,9 @@ def train_ann_on_site(zip_info):
     X_train, X_test, y_train, y_test = train_test_split(
         processed[variables].to_numpy(), processed[train_labels].to_numpy(), test_size=test_size, shuffle=False)
     # do grid search for best model
-    # tuned_parameters = [{'hidden_dim': [num_key_variables, 12, 16, 128], 'batch_size': [1, 15, 30],'lr': [0.5, 0.05, 0.005, 0.0005, 0.00005], 
-    #                     'epochs': [15], 'regularization_param': [1, 0.1, 0.01, 0.001]}]
-    tuned_parameters = [{'hidden_dim': [8], 'batch_size': [1],'lr': [0.0005], 
+    # tuned_parameters = [{'hidden_dim': [num_key_variables], 'batch_size': [1, 15, 30, 90],'lr': [0.05, 0.005, 0.0005, 0.00005], 
+    #                     'epochs': [2500], 'regularization_param': [1, 0.1, 0.01, 0.001]}]
+    tuned_parameters = [{'hidden_dim': [8], 'batch_size': [90],'lr': [0.0005], 
                         'epochs': [15], 'regularization_param': [0.1]}]
 
     clf = GridSearchCV(SimpleANNRegressor(num_key_variables, 1), tuned_parameters, cv=k)
@@ -56,8 +56,8 @@ def train_ann_on_site(zip_info):
     # visualize results
     y_test = best_model.predict(X_test)
     y_train = best_model.predict(X_train)
-    generate_visualizations(processed['time_index'].to_numpy().squeeze(), processed[labels].to_numpy().squeeze(), y_test, y_train, 0, granularity, data['TIMESTAMP'].iloc[0], labels, zip_info[0])
-    generate_file_output(file_output, zip_info[0])
+    generate_visualizations(processed['time_index'].to_numpy().squeeze(), processed[labels].to_numpy().squeeze(), y_test, y_train, 0, granularity, data['TIMESTAMP'].iloc[0], labels, zip_info[1])
+    generate_file_output(file_output, zip_info[1])
 
     # generate_weights_visualization(best_model, variables[:-1], zip_info[0])
 

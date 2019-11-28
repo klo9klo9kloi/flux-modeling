@@ -23,9 +23,16 @@ class SimpleRegressorBase(BaseEstimator):
 		self.threshold = threshold
 		self.regularization_param = regularization_param
 
-	def stop_condition(self, iteration, loss_diff):
-		if loss_diff <= self.threshold:
+	def stop_condition(self, iteration, curr_loss, prev_loss):
+		if np.abs(curr_loss-prev_loss) <= self.threshold:
 			return True
+		if curr_loss > self.min_loss:
+			self.tol += 1
+		else:
+			self.tol = 0
+			self.min_loss = curr_loss
+		if self.tol > 20:
+			return True 
 		return False
 
 	def get_params(self, deep=False):
@@ -53,6 +60,8 @@ class SimpleANNRegressor(SimpleRegressorBase):
 		print('----------------------------------------')
 		print('Training with parameters: ' + str(self.get_params()))
 		self.model = SimpleANN(self.input_dim, self.output_dim, self.hidden_dim)
+		self.min_loss = float("inf")
+		self.tol = 0
 
 		all_training_data = torch.from_numpy(X.astype('float64'))
 		all_training_labels = torch.from_numpy(y.astype('float64'))
@@ -68,7 +77,7 @@ class SimpleANNRegressor(SimpleRegressorBase):
 		self.model.to(device)
 
 		#set up loss function and optimizer
-		criterion = nn.L1Loss()
+		criterion = nn.MSELoss()
 		optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr, weight_decay=self.regularization_param)
 		
 		# train
@@ -97,7 +106,7 @@ class SimpleANNRegressor(SimpleRegressorBase):
 					total_loss += criterion(output, lbls).item() * inpts.size(1)
 				total_loss = total_loss/len(loader)
 				print("Epoch: {}/{}...".format(i+1, self.epochs), "Loss: {:.6f}...".format(total_loss))
-			if self.stop_condition(i, np.abs(total_loss-prev_loss)):
+			if self.stop_condition(i, total_loss, prev_loss):
 				break
 			prev_loss = total_loss
 		self.trained_for = i
@@ -170,6 +179,8 @@ class SimpleLSTMRegressor(SimpleRegressorBase):
 		print('----------------------------------------')
 		print('Training with parameters: ' + str(self.get_params()))
 		self.model = SimpleLSTM(self.input_dim, self.output_dim, self.hidden_dim, self.n_layers)
+		self.min_loss = float("inf")
+		self.tol = 0
 
 		# the last column of X is the time_index column, which we dont want to train on
 		# we only include it because our sampler depends on it
@@ -250,7 +261,7 @@ class SimpleLSTMRegressor(SimpleRegressorBase):
 					total_loss += criterion(output, lbls[-1]).item() * inpts.size(0)
 				total_loss = total_loss/len(loader)
 				print("Epoch: {}/{}...".format(i+1, self.epochs), "Loss: {:.6f}...".format(total_loss))
-			if self.stop_condition(i, np.abs(total_loss-prev_loss)):
+			if self.stop_condition(i, total_loss, prev_loss):
 				break
 			prev_loss = total_loss
 		self.trained_for = i
