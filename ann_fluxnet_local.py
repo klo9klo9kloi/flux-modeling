@@ -31,10 +31,10 @@ def train_ann_on_site(zip_info):
     X_train, X_test, y_train, y_test = train_test_split(
         processed[variables].to_numpy(), processed[train_labels].to_numpy(), test_size=test_size, shuffle=False)
     # do grid search for best model
-    # tuned_parameters = [{'hidden_dim': [num_key_variables], 'batch_size': [1, 15, 30, 90],'lr': [0.05, 0.005, 0.0005, 0.00005], 
+    # tuned_parameters = [{'hidden_dim': [num_key_variables], 'batch_size': [30, 90],'lr': [0.05, 0.005, 0.0005, 0.00005], 
     #                     'epochs': [2500], 'regularization_param': [1, 0.1, 0.01, 0.001]}]
-    tuned_parameters = [{'hidden_dim': [8], 'batch_size': [90],'lr': [0.0005], 
-                        'epochs': [15], 'regularization_param': [0.1]}]
+    tuned_parameters = [{'hidden_dim': [num_key_variables], 'batch_size': [90],'lr': [0.0005], 
+                        'epochs': [100], 'regularization_param': [0.1]}]
 
     clf = GridSearchCV(SimpleANNRegressor(num_key_variables, 1), tuned_parameters, cv=k)
     clf.fit(X_train, y_train)

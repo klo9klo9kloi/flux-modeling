@@ -15,7 +15,7 @@ def train_lstm_on_site(zip_info):
     granularity = 'DD' #can be 'YY', 'WW', 'DD', 'MM', 'HH'
     test_size = 0.25
     k = 2
-    offset = False
+    offset = True
 
     file_output = []
     data, variables = preprocess(*zip_info, granularity, target_variables, backup_variables, labels, file_output, offset=offset)
@@ -33,8 +33,8 @@ def train_lstm_on_site(zip_info):
         processed[variables].to_numpy(), processed[train_labels].to_numpy(), test_size=test_size, shuffle=False) #can't shuffle because it is time series data -> sequence order matters
 
     # do grid search for best model
-    # tuned_parameters = [{'hidden_dim': [8], 'batch_size': [30], 'seq_len': [5], 'lr': [0.0005], 'epochs': [2500], 'clip': [10]}]
-    tuned_parameters = [{'hidden_dim': [8, 16], 'batch_size': [1, 15, 30, 90], 
+    # tuned_parameters = [{'hidden_dim': [num_key_variables], 'batch_size': [30], 'seq_len': [15], 'lr': [0.0005], 'epochs': [1], 'clip': [10]}]
+    tuned_parameters = [{'hidden_dim': [num_key_variables], 'batch_size': [30, 90], 
                           'epochs': [2500], 'seq_len': [5, 15, 30], 'clip': [10], 'lr': [0.005, 0.0005, 0.00005],
                           'regularization_param': [1, 0.1, 0.01, 0.001]}]
 

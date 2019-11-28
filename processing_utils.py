@@ -172,7 +172,7 @@ def generate_visualizations(time_index, ground_truth, test_pred, train_pred, seq
     # total_fAPAR = np.append(train_set[:, -2:-1], test_set[:, -2:-1])
     # plt.figure()
     # sns.lineplot(x=time_index, y=total_fAPAR, label="fAPAR0", color="green")
-    plt.show()
+    # plt.show()
 
     plt.figure()
     total_pred = train_pred + test_pred
@@ -202,24 +202,30 @@ def generate_weights_visualization(model, variables, site_name):
 
     if not os.path.exists(visualizations_directory + '/' + site_name):
         os.makedirs(visualizations_directory)
-    plt.figure()
+    plt.rc("axes", titlesize=18)
+
+    fig = plt.figure()
     sns.heatmap(ii_weights, xticklabels=variables)
     plt.title('Input Gate Weights for Input')
+    fig.set_size_inches(16,14)
     plt.savefig(visualizations_directory + '/' + site_name + '/ii_weights.png')
 
-    plt.figure()
+    fig = plt.figure()
     sns.heatmap(if_weights, xticklabels=variables)
     plt.title('Forget Gate Weights for Input')
+    fig.set_size_inches(16,14)
     plt.savefig(visualizations_directory + '/' + site_name + '/if_weights.png')
 
-    plt.figure()
+    fig = plt.figure()
     sns.heatmap(ig_weights, xticklabels=variables)
     plt.title('Cell State Weights for Input')
+    fig.set_size_inches(16,14)
     plt.savefig(visualizations_directory + '/' + site_name + '/ig_weights.png')
 
-    plt.figure()
+    fig = plt.figure()
     sns.heatmap(io_weights, xticklabels=variables)
     plt.title('Output Gate Weights for Input')
+    fig.set_size_inches(16,14)
     plt.savefig(visualizations_directory + '/' + site_name + '/io_weights.png')
 
 

@@ -22,16 +22,19 @@ class SimpleRegressorBase(BaseEstimator):
 		self.scoring = scoring
 		self.threshold = threshold
 		self.regularization_param = regularization_param
+		self.plateau = 0
 
 	def stop_condition(self, iteration, curr_loss, prev_loss):
 		if np.abs(curr_loss-prev_loss) <= self.threshold:
-			return True
+			self.plateau += 1
+		else:
+			self.plateau = 0
 		if curr_loss > self.min_loss:
 			self.tol += 1
 		else:
 			self.tol = 0
 			self.min_loss = curr_loss
-		if self.tol > 20:
+		if self.tol > 20 or self.plateau > 10:
 			return True 
 		return False
 
@@ -62,6 +65,7 @@ class SimpleANNRegressor(SimpleRegressorBase):
 		self.model = SimpleANN(self.input_dim, self.output_dim, self.hidden_dim)
 		self.min_loss = float("inf")
 		self.tol = 0
+		self.plateau = 0
 
 		all_training_data = torch.from_numpy(X.astype('float64'))
 		all_training_labels = torch.from_numpy(y.astype('float64'))
@@ -100,11 +104,8 @@ class SimpleANNRegressor(SimpleRegressorBase):
 			total_loss = 0
 			with torch.no_grad():
 				self.model.eval()	
-				for inpts, lbls in loader:
-					inpts, lbls = inpts.to(device), lbls.to(device)
-					output = self.model(inpts)
-					total_loss += criterion(output, lbls).item() * inpts.size(1)
-				total_loss = total_loss/len(loader)
+				output = self.model(all_training_data)
+				total_loss = criterion(output, all_training_labels).item()
 				print("Epoch: {}/{}...".format(i+1, self.epochs), "Loss: {:.6f}...".format(total_loss))
 			if self.stop_condition(i, total_loss, prev_loss):
 				break
@@ -113,10 +114,7 @@ class SimpleANNRegressor(SimpleRegressorBase):
 		return self
 
 	def predict(self, X, **kwargs):
-		with torch.no_grad():
-			data = TensorDataset(torch.from_numpy(X.astype('float64')))
-			loader = DataLoader(data, shuffle=False, batch_size=self.batch_size)
-			
+		with torch.no_grad():			
 			is_cuda = torch.cuda.is_available()
 			if is_cuda:
 				device = torch.device("cuda")
@@ -126,15 +124,8 @@ class SimpleANNRegressor(SimpleRegressorBase):
 			self.model.to(device)
 			self.model.eval()
 			
-			predictions = []
-			for inp in loader:
-				inp = inp[0]
-				inp = inp.to(device)
-				out = self.model(inp)
-				if out.size(0) == 1:
-					predictions.append(out.squeeze().item())
-				else:
-					predictions += out.squeeze().tolist()
+			out = self.model(torch.from_numpy(X.astype('float64')))
+			predictions = out.squeeze().tolist()
 		return predictions
 
 	def score(self, X, y, **kwargs):
@@ -181,6 +172,7 @@ class SimpleLSTMRegressor(SimpleRegressorBase):
 		self.model = SimpleLSTM(self.input_dim, self.output_dim, self.hidden_dim, self.n_layers)
 		self.min_loss = float("inf")
 		self.tol = 0
+		self.plateau = 0
 
 		# the last column of X is the time_index column, which we dont want to train on
 		# we only include it because our sampler depends on it
@@ -269,12 +261,9 @@ class SimpleLSTMRegressor(SimpleRegressorBase):
 
 	def predict(self, X, **kwargs):
 		with torch.no_grad():
-			loader = []
 			data = torch.from_numpy(X[:, :-1].astype('float64'))
 
 			sampler = TimeseriesSampler(X[:, -1:].squeeze().astype('int'), window_size=self.sequence_length, shuffle=False)
-
-			loader = [] # will contain tuples of (inpt, lbls)
 
 			is_cuda = torch.cuda.is_available()
 			if is_cuda:
