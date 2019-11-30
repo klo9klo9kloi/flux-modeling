@@ -13,12 +13,12 @@ import re
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 from models import TimeseriesSampler
-from test_script import train_autoencoder
 from scipy.io import loadmat
 from scipy.interpolate import interp1d
 from sklearn.metrics import r2_score
 
 working_directory = os.getcwd()
+# working_directory = '/content/gdrive/My Drive/Colab Notebooks'
 fAPAR_directory = 'modisfAPAR'
 fAPAR_VAR_NAME = 'avg_fAPAR_interpol'
 mat_naming_convention = '_MOD15A2H_Fpar_500m.mat'
@@ -110,7 +110,8 @@ def get_mat_info():
     return file_names
 
 def get_avg_fpar_frame(site_name):
-    mat = loadmat('modisfAPAR/' + site_name + mat_naming_convention)['FparData']
+    # mat = loadmat('modisfAPAR/' + site_name + mat_naming_convention)['FparData']
+    mat = loadmat(working_directory + '/modisfAPAR/' + site_name + mat_naming_convention)['FparData']
     df = pd.DataFrame(data=mat, columns=['year', 'DOY', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25])
 
     timestamp = df['year'].astype('str') + df['DOY'].astype('str')
@@ -165,9 +166,9 @@ def generate_visualizations(time_index, ground_truth, test_pred, train_pred, seq
     sns.lineplot(x=time_index[len(train_pred):], y= test_pred,
                  label='test predictions', color='red')
 
-    if not os.path.exists(visualizations_directory + '/' + site_name):
-        os.makedirs(visualizations_directory + '/' + site_name)
-    plt.savefig(visualizations_directory + '/' + site_name + '/predictions.png')
+    if not os.path.exists(working_directory + '/' + visualizations_directory + '/' + site_name):
+        os.makedirs(working_directory + '/' + visualizations_directory + '/' + site_name)
+    plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/predictions.png')
 
     # total_fAPAR = np.append(train_set[:, -2:-1], test_set[:, -2:-1])
     # plt.figure()
@@ -180,13 +181,13 @@ def generate_visualizations(time_index, ground_truth, test_pred, train_pred, seq
     plt.ylabel('Residual')
     plt.xlabel(granularity_to_string[granularity] + ' since ' + start_date)
     plt.scatter(x=time_index, y=(ground_truth - total_pred))
-    plt.savefig(visualizations_directory + '/' + site_name + '/residuals.png')
+    plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/residuals.png')
 
 def generate_file_output(output_strings, site_name):
-    if not os.path.exists(training_output_directory):
-        os.makedirs(training_output_directory)
+    if not os.path.exists(working_directory + '/' + training_output_directory):
+        os.makedirs(working_directory + '/' + training_output_directory)
 
-    with open(training_output_directory + '/' + site_name + '_out.txt', 'w') as f:
+    with open(working_directory + '/' + training_output_directory + '/' + site_name + '_out.txt', 'w') as f:
         for output in output_strings:
             f.write(output + '\n')
         f.close()
@@ -200,33 +201,33 @@ def generate_weights_visualization(model, variables, site_name):
     ig_weights = input_weights[dim*2:dim*3]
     io_weights = input_weights[dim*3:dim*4]
 
-    if not os.path.exists(visualizations_directory + '/' + site_name):
-        os.makedirs(visualizations_directory)
+    if not os.path.exists(working_directory + '/' + visualizations_directory + '/' + site_name):
+        os.makedirs(working_directory + '/' + visualizations_directory)
     plt.rc("axes", titlesize=18)
 
     fig = plt.figure()
     sns.heatmap(ii_weights, xticklabels=variables)
     plt.title('Input Gate Weights for Input')
     fig.set_size_inches(16,14)
-    plt.savefig(visualizations_directory + '/' + site_name + '/ii_weights.png')
+    plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/ii_weights.png')
 
     fig = plt.figure()
     sns.heatmap(if_weights, xticklabels=variables)
     plt.title('Forget Gate Weights for Input')
     fig.set_size_inches(16,14)
-    plt.savefig(visualizations_directory + '/' + site_name + '/if_weights.png')
+    plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/if_weights.png')
 
     fig = plt.figure()
     sns.heatmap(ig_weights, xticklabels=variables)
     plt.title('Cell State Weights for Input')
     fig.set_size_inches(16,14)
-    plt.savefig(visualizations_directory + '/' + site_name + '/ig_weights.png')
+    plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/ig_weights.png')
 
     fig = plt.figure()
     sns.heatmap(io_weights, xticklabels=variables)
     plt.title('Output Gate Weights for Input')
     fig.set_size_inches(16,14)
-    plt.savefig(visualizations_directory + '/' + site_name + '/io_weights.png')
+    plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/io_weights.png')
 
 
 def generate_variability_graph(zip_info):
@@ -247,7 +248,7 @@ def generate_variability_graph(zip_info):
     sns.lineplot(x=ground_truth.index, y=ground_truth.values, label='ground truth', color='red')
     sns.lineplot(x="variable", y="value", data=predictions,
                  label='predictions', color='blue', ci="sd", err_style="band")
-    plt.title('LSTM Predictions for '+ site_name + ' (no forecasting)')
+    plt.title('LSTM Predictions for '+ site_name + ' (one-step ahead forecasting)')
     plt.xlabel("Days since " + original_data['TIMESTAMP'].iloc[0])
     plt.ylabel('GPP_NT_VUT_REF')
     # plt.show()
@@ -259,7 +260,7 @@ def generate_r2_chart(zip_infos):
     site_names = []
     scores = []
     for zf in zip_infos:
-        path = training_output_directory + '/predictions/' + zf[1] + '.txt'
+        path = training_output_directory + '/ann_predictions/' + zf[1] + '.txt'
 
         df = pd.read_csv(path)
         scores += list(df.iloc[:, -1])
@@ -269,9 +270,10 @@ def generate_r2_chart(zip_infos):
     plt.figure()
     sns.set(style="whitegrid")
     sns.barplot(x="site", y="score", data=score_frame, ci="sd")
-    plt.title('LSTM Performance across Sites (no forecasting)')
+    plt.title('ANN Performance across Sites')
     plt.xlabel("Site")
     plt.ylabel("Coefficient of Determination (R^2)")
+    plt.ylim(0, 0.9)
     # plt.show()
     if not os.path.exists(visualizations_directory):
         os.makedirs(visualizations_directory)

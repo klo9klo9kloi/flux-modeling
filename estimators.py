@@ -104,8 +104,9 @@ class SimpleANNRegressor(SimpleRegressorBase):
 			total_loss = 0
 			with torch.no_grad():
 				self.model.eval()	
-				output = self.model(all_training_data)
-				total_loss = criterion(output, all_training_labels).item()
+				inpts, lbls = all_training_data.to(device), all_training_labels.to(device)
+				output = self.model(inpts)
+				total_loss = criterion(output, lbls).item()
 				print("Epoch: {}/{}...".format(i+1, self.epochs), "Loss: {:.6f}...".format(total_loss))
 			if self.stop_condition(i, total_loss, prev_loss):
 				break
@@ -124,7 +125,7 @@ class SimpleANNRegressor(SimpleRegressorBase):
 			self.model.to(device)
 			self.model.eval()
 			
-			out = self.model(torch.from_numpy(X.astype('float64')))
+			out = self.model(torch.from_numpy(X.astype('float64')).to(device))
 			predictions = out.squeeze().tolist()
 		return predictions
 
@@ -289,8 +290,37 @@ class SimpleLSTMRegressor(SimpleRegressorBase):
 		n = X.shape[0]
 		if self.sequence_length >= n:
 			raise ValueError("Sequence length is greater than size of test data -> cannot evaluate on test data")
-		predictions = np.nan_to_num(np.array(self.predict(X, **kwargs), dtype='float64'))
-		truth = np.nan_to_num(y[self.sequence_length-1:])
+
+		predictions = []
+		truth = []
+		with torch.no_grad():
+			data = torch.from_numpy(X[:, :-1].astype('float64'))
+			labels = torch.from_numpy(y.astype('float64'))
+
+			sampler = TimeseriesSampler(X[:, -1:].squeeze().astype('int'), window_size=self.sequence_length, shuffle=False)
+
+			is_cuda = torch.cuda.is_available()
+			if is_cuda:
+				device = torch.device("cuda")
+			else:
+				device = torch.device("cpu")
+			self.model.double()
+			self.model.to(device)
+			self.model.eval()
+			
+			for window in sampler:
+				inp = data[window]
+				inp = inp.view(self.sequence_length, 1, self.input_dim)
+				h = self.model.init_hidden(1)
+				h = tuple([e.to(device).data for e in h])
+				inp = inp.to(device)
+				out, h = self.model(inp, h)
+				predictions.append(out.squeeze().item())
+
+				truth.append(labels[window][-1])
+
+		predictions = np.nan_to_num(np.array(predictions, dtype='float64'))
+		truth = np.nan_to_num(np.array(truth, dtype='float64'))
 		if self.scoring == 'r2':
 			return r2_score(truth, predictions)
 		elif self.scoring == 'mda':
