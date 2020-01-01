@@ -10,9 +10,8 @@ def mda(actual: np.ndarray, predicted: np.ndarray):
     """ Mean Directional Accuracy """
     return np.mean((np.sign(actual[1:] - actual[:-1]) == np.sign(predicted[1:] - predicted[:-1])).astype(int))
 
-
 class SimpleRegressorBase(BaseEstimator):
-	def __init__(self, input_dim, output_dim, hidden_dim=16, lr=0.05, batch_size=1, epochs=20, threshold=1e-5, regularization_param = 0, scoring='mse'):
+	def __init__(self, input_dim, output_dim, hidden_dim='match', lr=0.05, batch_size=1, epochs=20, threshold=1e-5, regularization_param = 0, scoring='mse'):
 		self.lr = lr
 		self.batch_size = batch_size
 		self.epochs = epochs
@@ -23,6 +22,11 @@ class SimpleRegressorBase(BaseEstimator):
 		self.threshold = threshold
 		self.regularization_param = regularization_param
 		self.plateau = 0
+
+		if self.hidden_dim == 'match':
+			self.hidden_dim = self.input_dim
+		else:
+			self.hidden_dim = self.input_dim
 
 	def stop_condition(self, iteration, curr_loss, prev_loss):
 		if np.abs(curr_loss-prev_loss) <= self.threshold:
@@ -55,6 +59,11 @@ class SimpleRegressorBase(BaseEstimator):
 		self.scoring = params.get('scoring', self.scoring)
 		self.threshold = params.get('threshold', self.threshold)
 		self.regularization_param = params.get('regularization_param', self.regularization_param)
+
+		if self.hidden_dim == 'match':
+			self.hidden_dim = self.input_dim
+		else:
+			self.hidden_dim = self.input_dim
 		return self
 
 class SimpleANNRegressor(SimpleRegressorBase):
@@ -66,6 +75,10 @@ class SimpleANNRegressor(SimpleRegressorBase):
 		self.min_loss = float("inf")
 		self.tol = 0
 		self.plateau = 0
+
+		if X.shape[1] > self.hidden_dim:
+			X = X[:, :-1]
+			print("time_index column passed into ANN estimator during training; disregarding last input feature column")
 
 		all_training_data = torch.from_numpy(X.astype('float64'))
 		all_training_labels = torch.from_numpy(y.astype('float64'))
@@ -131,6 +144,11 @@ class SimpleANNRegressor(SimpleRegressorBase):
 
 	def score(self, X, y, **kwargs):
 		n = X.shape[0]
+
+		if X.shape[1] > self.hidden_dim:
+			X = X[:, :-1]
+			print("time_index column passed into ANN estimator during scoring; disregarding last input feature column")
+
 		predictions = np.nan_to_num(np.array(self.predict(X, **kwargs), dtype='float64'))
 		truth = np.nan_to_num(y)
 		if self.scoring == 'r2':
@@ -273,8 +291,8 @@ class SimpleLSTMRegressor(SimpleRegressorBase):
 				device = torch.device("cpu")
 			self.model.double()
 			self.model.to(device)
-			self.model.eval()
-			
+			self.model.eval()	
+
 			predictions = []
 			for window in sampler:
 				inp = data[window]
@@ -330,8 +348,10 @@ class SimpleLSTMRegressor(SimpleRegressorBase):
 		else:
 			return -mean_squared_error(truth, predictions)
 
-
-
-
-
-
+def get_model_type(model_type):
+    if model_type == 'ann':
+        return SimpleANNRegressor
+    elif model_type == 'lstm':
+        return SimpleLSTMRegressor
+    else:
+        raise ValueError('unrecognized model_type argument: ' + str(config['model_type']))

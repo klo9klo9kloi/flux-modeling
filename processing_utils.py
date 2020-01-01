@@ -5,27 +5,57 @@ import numpy as np
 import matplotlib.pyplot as plt 
 import seaborn as sns
 import zipfile
-from datetime import datetime, timedelta
 import time
-from sklearn.model_selection import KFold
 import glob
 import re
+import ast
 import torch
+from datetime import datetime, timedelta
 from torch.utils.data import TensorDataset, DataLoader
 from models import TimeseriesSampler
 from scipy.io import loadmat
 from scipy.interpolate import interp1d
 from sklearn.metrics import r2_score
+from sklearn.model_selection import KFold
 
 working_directory = os.getcwd()
-# working_directory = '/content/gdrive/My Drive/Colab Notebooks'
 fAPAR_directory = 'modisfAPAR'
 fAPAR_VAR_NAME = 'avg_fAPAR_interpol'
 mat_naming_convention = '_MOD15A2H_Fpar_500m.mat'
-visualizations_directory = 'viz'
-training_output_directory = 'out'
 
 granularity_to_string = {'YY' : 'Years', 'MM': 'Months', 'WW': 'Weeks', 'DD': 'Days', 'HH': 'Hours'}
+
+def get_training_params(path_to_file):
+    train_params = {}
+    with open(path_to_file) as f:
+        model_type = f.readline().rstrip()
+        hyperparameter_grid = ast.literal_eval(f.readline())
+        num_folds = int(f.readline())
+        target_variables = ast.literal_eval(f.readline())
+        backup_variables = ast.literal_eval(f.readline())
+        labels = ast.literal_eval(f.readline())
+        granularity = f.readline().rstrip()
+        val_size = float(f.readline())
+        test_size = float(f.readline())
+        offset = int(f.readline())
+        num_iter = int(f.readline())
+        out_dir = f.readline().rstrip()
+        viz_dir = f.readline().rstrip()
+        
+        train_params['model_type'] = model_type
+        train_params['hyperparameter_grid'] = hyperparameter_grid
+        train_params['k'] = num_folds
+        train_params['target_variables'] = target_variables
+        train_params['backup_variables'] = backup_variables
+        train_params['labels'] = labels
+        train_params['granularity'] = granularity
+        train_params['val_size'] = val_size
+        train_params['test_size'] = test_size
+        train_params['offset'] = offset
+        train_params['n'] = num_iter
+        train_params['out'] = out_dir
+        train_params['viz'] = viz_dir
+    return train_params
 
 def get_zip_name(target_dir, site_name, year_range, something):
     return working_directory + '/' + target_dir + '/FLX_' + site_name + '_FLUXNET2015_FULLSET_' \
@@ -41,7 +71,7 @@ def load_csv_from_zip(target_dir, site_name, set_type, year_range, something, gr
     return frame
 
 # granularity = 'YY', 'MM', 'WW', 'DD', 'HH' for yearly, monthly, weekly, daily, hourly respectively
-def preprocess(target_dir, site_name, set_type, year_range, something, granularity, target_variables, backup_variables, labels, debug_output, offset=False):
+def preprocess(target_dir, site_name, set_type, year_range, something, granularity, target_variables, backup_variables, labels, debug_output, offset=0):
     frame = load_csv_from_zip(target_dir, site_name, set_type, year_range, something, granularity)
     print("Total rows: " + str(len(frame.index)))
     print()
@@ -49,9 +79,9 @@ def preprocess(target_dir, site_name, set_type, year_range, something, granulari
     frame['time_index'] = frame.index
 
     if offset:
-       # set up data so that label to be predicted is the value 1 day later
+       # set up data so that label to be predicted is the value x days later
         for label in labels:
-            frame[label+'_train'] = frame[label].iloc[1:].reset_index()[label]
+            frame[label+'_train'] = frame[label].iloc[offset:].reset_index()[label]
     else:
         for label in labels:
             frame[label+'_train'] = frame[label]
@@ -140,50 +170,32 @@ def get_avg_fpar_frame(site_name):
     new_frame = pd.DataFrame({'TIMESTAMP': timestamp, fAPAR_VAR_NAME: ynew})
     return new_frame
 
-def split_dataset(df, train_prop, k):
-    n = len(df.index)
-    split_index = int(n*train_prop)
-    train_set = df.iloc[:split_index]
-
-    kf = KFold(n_splits=k)
-    train = []
-    val = []
-    # these indexes are a list of indices
-    for train_index, val_index in kf.split(train_set):
-        train.append(train_index)
-        val.append(val_index)
-    return train, val, split_index
-
-def generate_visualizations(time_index, ground_truth, test_pred, train_pred, sequence_length, granularity, start_date, pred_label, site_name):
-    plt.figure()
+def generate_visualizations(time_index, ground_truth, test_pred, train_pred, granularity, start_date, pred_label, site_name, visualizations_directory):
+    fig = plt.figure()
     plt.title('Predictions vs. Ground Truth for '+ site_name)
-    #TODO: parse datetime from start_date
     plt.xlabel(granularity_to_string[granularity] + ' since ' + start_date)
     plt.ylabel(pred_label)
     sns.lineplot(x=time_index, y=ground_truth, label='ground truth')
     sns.lineplot(x=time_index[0: len(train_pred)], y=train_pred, 
                  label='train predictions')
-    sns.lineplot(x=time_index[len(train_pred):], y= test_pred,
+    sns.lineplot(x=time_index[(len(time_index)-len(test_pred)):], y= test_pred,
                  label='test predictions', color='red')
 
     if not os.path.exists(working_directory + '/' + visualizations_directory + '/' + site_name):
         os.makedirs(working_directory + '/' + visualizations_directory + '/' + site_name)
     plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/predictions.png')
+    plt.close()
 
-    # total_fAPAR = np.append(train_set[:, -2:-1], test_set[:, -2:-1])
-    # plt.figure()
-    # sns.lineplot(x=time_index, y=total_fAPAR, label="fAPAR0", color="green")
-    # plt.show()
-
-    plt.figure()
+    fig = plt.figure()
     total_pred = train_pred + test_pred
     plt.title('Residual Graph for ' + site_name)
     plt.ylabel('Residual')
     plt.xlabel(granularity_to_string[granularity] + ' since ' + start_date)
     plt.scatter(x=time_index, y=(ground_truth - total_pred))
     plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/residuals.png')
+    plt.close()
 
-def generate_file_output(output_strings, site_name):
+def generate_file_output(output_strings, site_name, training_output_directory):
     if not os.path.exists(working_directory + '/' + training_output_directory):
         os.makedirs(working_directory + '/' + training_output_directory)
 
@@ -192,7 +204,7 @@ def generate_file_output(output_strings, site_name):
             f.write(output + '\n')
         f.close()
 
-def generate_weights_visualization(model, variables, site_name):
+def generate_weights_visualization(model, variables, site_name, visualizations_directory):
     param_list = list(model.model.parameters())
     dim = model.model.hidden_dim
     input_weights = param_list[0].data.cpu()
@@ -210,27 +222,31 @@ def generate_weights_visualization(model, variables, site_name):
     plt.title('Input Gate Weights for Input')
     fig.set_size_inches(16,14)
     plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/ii_weights.png')
+    plt.close()
 
     fig = plt.figure()
     sns.heatmap(if_weights, xticklabels=variables)
     plt.title('Forget Gate Weights for Input')
     fig.set_size_inches(16,14)
     plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/if_weights.png')
+    plt.close()
 
     fig = plt.figure()
     sns.heatmap(ig_weights, xticklabels=variables)
     plt.title('Cell State Weights for Input')
     fig.set_size_inches(16,14)
     plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/ig_weights.png')
+    plt.close()
 
     fig = plt.figure()
     sns.heatmap(io_weights, xticklabels=variables)
     plt.title('Output Gate Weights for Input')
     fig.set_size_inches(16,14)
     plt.savefig(working_directory + '/' + visualizations_directory + '/' + site_name + '/io_weights.png')
+    plt.close()
 
 
-def generate_variability_graph(zip_info):
+def generate_variability_graph(zip_info, training_output_directory, visualizations_directory, model_type, extras=""):
     site_name = zip_info[1]
 
     path = training_output_directory + '/predictions/' + site_name + '.txt'
@@ -243,41 +259,38 @@ def generate_variability_graph(zip_info):
     predictions = df.iloc[:, :-1].melt()
     predictions['variable'] = predictions['variable'].astype('float').astype('int')
 
-    plt.figure()
+    fig = plt.figure()
     sns.lineplot(x=ground_truth.index, y=ground_truth.values, label='ground truth')
     palette = sns.color_palette()
     ax = sns.lineplot(x="variable", y="value", data=predictions,
                  label='predictions', ci="sd", err_style="band", color=palette[4])
     ax.grid(False)
-    plt.title('LSTM Predictions for '+ site_name + ' (one-step ahead forecasting)')
-    # plt.title("LSTM Predictions for " + site_name + " (no forecasting)")
-    # plt.title('ANN Predictions for ' + site_name)
+    plt.title(model_type.upper() + ' Predictions for '+ site_name + " " + extras)
     plt.xlabel("Days since " + original_data['TIMESTAMP'].iloc[0])
     plt.ylabel('GPP_NT_VUT_REF')
     # plt.show()
     if not os.path.exists(visualizations_directory + '/' + site_name):
         os.makedirs(visualizations_directory + '/' + site_name)
     plt.savefig(visualizations_directory + '/' + site_name + '/prediction_variability.png')
+    plt.close()
 
-def generate_r2_chart(zip_infos):
+def generate_r2_chart(zip_infos, training_output_directory, visualizations_directory, model_type, extras=""):
     site_names = []
     scores = []
     for zf in zip_infos:
-        path = training_output_directory + '/ann_predictions/' + zf[1] + '.txt'
+        path = training_output_directory + '/predictions/' + zf[1] + '.txt'
 
         df = pd.read_csv(path)
         scores += list(df.iloc[:, -1])
         site_names += ([zf[1]] * len(df.index))
 
     score_frame = pd.DataFrame({"site": site_names, "score": scores})
-    plt.figure()
+    fig = plt.figure()
     sns.set(style="whitegrid")
     palette = sns.color_palette()
     ax = sns.barplot(x="site", y="score", data=score_frame, ci="sd", palette={"AU-Gin": palette[3], 'CA-NS3': palette[1], 'CZ-BK1': palette[2], 'US-Ton': palette[4]})
     ax.grid(False)
-    # plt.title('LSTM performance across sites (one-step ahead forecasting)')
-    # plt.title("LSTM performance across sites (no forecasting)")
-    plt.title('ANN performance across sites')
+    plt.title(model_type.upper() + ' performance across sites ' + extras)
     plt.xlabel("Site")
     plt.ylabel("Coefficient of Determination (R^2)")
     plt.ylim(0, 0.9)
@@ -285,6 +298,7 @@ def generate_r2_chart(zip_infos):
     if not os.path.exists(visualizations_directory):
         os.makedirs(visualizations_directory)
     plt.savefig(visualizations_directory + '/r2_across_sites.png')
+    plt.close()
 
 def fix_prediction_data(zip_infos):
     for zf in zip_infos:
@@ -299,23 +313,162 @@ def fix_prediction_data(zip_infos):
             df.iloc[i, -1] = r2_score(ground_truth, predictions)
         df.to_csv(path, index=False)
 
-def generate_generalizability_chart(fluxnet_site_type, model):
-    path = training_output_directory + '/' + fluxnet_site_type + '/generalizability_test.txt'
+def generate_generalizability_chart(fluxnet_site_type, training_output_directory, visualizations_directory, model_type, extras=""):
+    path = working_directory + '/' + training_output_directory + '/' + fluxnet_site_type
 
-    df = pd.read_csv(path)
+    all_output_files = glob.glob(path + "/*_generalizability_test.txt")
+
+    all_output_frame = pd.DataFrame()
+
+    for output_file in all_output_files:
+        df = pd.read_csv(output_file)
+        all_output_frame = pd.concat((all_output_frame, df))
+
+    order = ['AU-Ade', 'AU-How', 'AU-Gin', 'AU-RDF', 'US-Ton', 'US-SRM']
+
     fig = plt.figure()
     sns.set(style="whitegrid")
-    sns.barplot(x="trained_on", y="r2", hue="site", data=df)
-    plt.xlabel("Trained On")
+    palette = sns.color_palette()
+    palette[2] = palette[3]
+    palette[0:2] = palette[5:7]
+    palette[3] = palette[8]
+    palette[5:6] = palette[9:10]
+    ax = sns.barplot(x="trained_on", y="r2", ci="sd", hue="site", palette=palette, hue_order=order, order=order, data=all_output_frame)
+    ax.grid(False)
+    plt.legend(title="Evaluated on", loc=1)
+    plt.xlabel("Trained on")
     plt.ylabel("Coefficient of Determination (R^2)")
-    plt.ylim(0, 1)
-    plt.title(model + " Performance Across WSA Sites")
+    plt.ylim(0, 0.7)
+    plt.title(model_type.upper() + " generalizability to other " + fluxnet_site_type + "-type sites " + extras)
     fig.set_size_inches(10, 8)
+    # plt.show()
 
-    if not os.path.exists(visualizations_directory + '/' + fluxnet_site_type):
-        os.makedirs(visualizations_directory + '/' + fluxnet_site_type)
-    plt.savefig(visualizations_directory + '/' + fluxnet_site_type + '/generalizability.png')
+    viz_path = working_directory + '/' + visualizations_directory + '/' + fluxnet_site_type
+
+    if not os.path.exists(viz_path):
+        os.makedirs(viz_path)
+    plt.savefig(viz_path + '/generalizability.png')
+    plt.close()
+
+def generate_universality_chart(fluxnet_site_type, training_output_directory, visualizations_directory, model_type, extras=""):
+    path = working_directory + '/' + training_output_directory + '/' + fluxnet_site_type
+
+    df = pd.read_csv(path + '/universiality_test.txt')
+
+    order = ['AU-Ade', 'AU-How', 'AU-Gin', 'AU-RDF', 'US-Ton', 'US-SRM']
+
+    fig = plt.figure()
+    sns.set(style="whitegrid")
+    palette = sns.color_palette()
+    palette[2] = palette[3]
+    palette[0:2] = palette[5:7]
+    palette[3] = palette[8]
+    palette[5:6] = palette[9:10]
+    ax = sns.barplot(x="site", y="r2", ci="sd", palette=palette, order=order, data=df)
+    ax.grid(False)
+    plt.xlabel("Evaluation Site")
+    plt.ylabel("Coefficient of Determination (R^2)")
+    plt.ylim(0, 0.8)
+    plt.title("All-site " + model_type.upper() + " model performance per site " + extras)
+    fig.set_size_inches(10, 8)
+    # plt.show()
+
+    viz_path = working_directory + '/' + visualizations_directory + '/' + fluxnet_site_type
+
+    if not os.path.exists(viz_path):
+        os.makedirs(viz_path)
+    plt.savefig(viz_path + '/universality.png')
+    plt.close()
 
 
+def generate_weight_variance_chart(zip_infos, training_output_directory, visualizations_directory, extras=""):
+    path = working_directory + '/' + training_output_directory + '/weights'
+
+    all_output_frame = pd.DataFrame()
+
+    for zf in zip_infos:
+        df = pd.read_csv(path + '/' + zf[1] + '_weight_variance.txt')
+
+        #normalize to 0-1 scale using max weight across variables
+        num_vars = len(df['target_variable'].unique())
+        new_vals = []
+        for i in range(0, len(df.index), num_vars):
+            absolute_sums = df.loc[i:i+num_vars-1, 'variability']
+            new_vals += list(absolute_sums/max(absolute_sums))
+
+        df['variability'] = new_vals
+        all_output_frame = pd.concat((all_output_frame, df))
+
+    order = ['AU-Gin', 'CA-NS3', 'CZ-BK1', 'US-Ton']
+    
+    fig = plt.figure()
+
+    sns.set(style="whitegrid")
+    palette = sns.color_palette()
+    ax = sns.barplot(x="target_variable", y="variability",ci="sd", hue="site", 
+                        palette={"AU-Gin": palette[3], 'CA-NS3': palette[1], 'CZ-BK1': palette[2], 'US-Ton': palette[4]}, 
+                        hue_order=order, data=all_output_frame[all_output_frame['weight_type'] == 'input-input'])
+    plt.xticks([0,1,2,3,4,5,6,7], ['TA', 'SW_IN', 'P', 'WS', 'VPD', 'CO2', 'SWC', 'fAPAR'])
+    ax.grid(False)
+    plt.legend(title="Site", loc=1)
+    plt.xlabel("Variable")
+    plt.ylabel("Weight Variance (Sum of Absolute Weights)")
+    # # plt.ylim(0, 0.7)
+    plt.title("LSTM Input-Input Gate Weight Variability across sites " + extras)
+    fig.set_size_inches(10, 8)
+    # plt.show()
+
+    viz_path = working_directory + '/' + visualizations_directory
+
+    if not os.path.exists(viz_path):
+        os.makedirs(viz_path)
+    plt.savefig(viz_path + '/ii_weight_variance.png')
+    plt.close()
+
+
+    fig = plt.figure()
+    ax = sns.barplot(x="target_variable", y="variability",ci="sd", hue="site", 
+                        palette={"AU-Gin": palette[3], 'CA-NS3': palette[1], 'CZ-BK1': palette[2], 'US-Ton': palette[4]}, 
+                        hue_order=order, data=all_output_frame[all_output_frame['weight_type'] == 'input-cell state'])
+    plt.xticks([0,1,2,3,4,5,6,7], ['TA', 'SW_IN', 'P', 'WS', 'VPD', 'CO2', 'SWC', 'fAPAR'])
+    ax.grid(False)
+    plt.legend(title="Site", loc=1)
+    plt.xlabel("Variable")
+    plt.ylabel("Weight Variance (Sum of Absolute Weights)")
+    # # plt.ylim(0, 0.7)
+    plt.title("LSTM Input-Cell State Gate Weight Variability across sites " + extras)
+    fig.set_size_inches(10, 8)
+    plt.savefig(viz_path + '/ig_weight_variance.png')
+    plt.close()
+
+    fig = plt.figure()
+    ax = sns.barplot(x="target_variable", y="variability",ci="sd", hue="site", 
+                        palette={"AU-Gin": palette[3], 'CA-NS3': palette[1], 'CZ-BK1': palette[2], 'US-Ton': palette[4]}, 
+                        hue_order=order, data=all_output_frame[all_output_frame['weight_type'] == 'input-forget'])
+    plt.xticks([0,1,2,3,4,5,6,7], ['TA', 'SW_IN', 'P', 'WS', 'VPD', 'CO2', 'SWC', 'fAPAR'])
+    ax.grid(False)
+    plt.legend(title="Site", loc=1)
+    plt.xlabel("Variable")
+    plt.ylabel("Weight Variance (Sum of Absolute Weights)")
+    # # plt.ylim(0, 0.7)
+    plt.title("LSTM Input-Forget Gate Weight Variability across sites " + extras)
+    fig.set_size_inches(10, 8)
+    plt.savefig(viz_path + '/if_weight_variance.png')
+    plt.close()
+
+    fig = plt.figure()
+    ax = sns.barplot(x="target_variable", y="variability", ci="sd", hue="site", 
+                        palette={"AU-Gin": palette[3], 'CA-NS3': palette[1], 'CZ-BK1': palette[2], 'US-Ton': palette[4]}, 
+                        hue_order=order, data=all_output_frame[all_output_frame['weight_type'] == 'input-output'])
+    plt.xticks([0,1,2,3,4,5,6,7], ['TA', 'SW_IN', 'P', 'WS', 'VPD', 'CO2', 'SWC', 'fAPAR'])
+    ax.grid(False)
+    plt.legend(title="Site", loc=1)
+    plt.xlabel("Variable")
+    plt.ylabel("Weight Variance (Sum of Absolute Weights)")
+    # # plt.ylim(0, 0.7)
+    plt.title("LSTM Input-Output Gate Weight Variability across sites " + extras)
+    fig.set_size_inches(10, 8)
+    plt.savefig(viz_path + '/io_weight_variance.png')
+    plt.close()
 
 
