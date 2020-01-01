@@ -47,4 +47,3 @@ To visualize the weight variance of the model parameters:
 
 To test performance of a model trained on all similar sites at each individual site:    
 `python3 run.py uni path_to_config_file num_iter site_type extras`  
->>>>>>> 23ce1fb8d4312afffd5e9bddd24a86c27443ff95
