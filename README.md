@@ -33,8 +33,17 @@ These text files are used to specify the configurations of a desired training pi
 - viz_dir (path to the desired visualization output directory)
 
 # Running Experiments
+To train the model:  
 `python3 run.py train path_to_data_directory path_to_config_file parallel`  
+
+To evaluate the model via R^2:  
 `python3 run.py test path_to_data_directory path_to_config_file parallel num_iter extras`  
+
+To test generalizability of a model trained on one site to other similar sites:  
 `python3 run.py gen path_to_data_directory path_to_config_file parallel num_iter site_type extras`  
+
+To visualize the weight variance of the model parameters:    
 `python3 run.py weight_viz path_to_data_directory path_to_config_file parallel num_iter extras`  
+
+To test performance of a model trained on all similar sites at each individual site:    
 `python3 run.py uni path_to_config_file num_iter site_type extras`  
