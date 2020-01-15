@@ -18,7 +18,7 @@ The code can be run directly using the commands described below once the data ha
 # Config Files
 These text files are used to specify the configurations of a desired training pipeline/procedure for an experiment. They adhere to the following structure:
 
-- model_type (ann or lstm)
+- model_type (ann, lstm, or cgan)
 - hyperparameter_grid (a list of dictionaries whose keys correspond to model parameters and whose values are a list of possible values)
 - num_folds (the number of folds during cross validation)
 - target_variables (a list of FLUXNET2015 variable names)
@@ -34,16 +34,16 @@ These text files are used to specify the configurations of a desired training pi
 
 # Running Experiments
 To train the model:  
-`python3 run.py train path_to_data_directory path_to_config_file parallel`  
+`python3 run.py SEED_NUM train PATH_TO_DATA_DIRECTORY PATH_TO_CONFIG_FILE RUN_IN_PARALLEL`  
 
 To evaluate the model via R^2:  
-`python3 run.py test path_to_data_directory path_to_config_file parallel num_iter extras`  
+`python3 run.py SEED_NUM test PATH_TO_DATA_DIRECTORY PATH_TO_CONFIG_FILE RUN_IN_PARALLEL NUM_ITER [EXTRAS]`  
 
 To test generalizability of a model trained on one site to other similar sites:  
-`python3 run.py gen path_to_data_directory path_to_config_file parallel num_iter site_type extras`  
+`python3 run.py SEED_NUM gen PATH_TO_DATA_DIRECTORY PATH_TO_CONFIG_FILE RUN_IN_PARALLEL NUM_ITER SITE_TYPE [EXTRAS]`  
 
 To visualize the weight variance of the model parameters:    
-`python3 run.py weight_viz path_to_data_directory path_to_config_file parallel num_iter extras`  
+`python3 run.py SEED_NUM weight_viz PATH_TO_DATA_DIRECTORY PATH_TO_CONFIG_FILE RUN_IN_PARALLEL NUM_ITER [EXTRAS]`  
 
 To test performance of a model trained on all similar sites at each individual site:    
-`python3 run.py uni path_to_config_file num_iter site_type extras`  
+`python3 run.py SEED_NUM uni PATH_TO_CONFIG_FILE NUM_ITER SITE_TYPE [EXTRAS]`  
