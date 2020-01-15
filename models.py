@@ -68,3 +68,77 @@ class TimeseriesSampler(Sampler):
 
     def __len__(self):
         return len(self.windows)
+
+
+class CGAN_Generator(nn.Module):
+    def __init__(self, noise_dim, label_dim, output_dim, hidden_dim_base):
+        super(CGAN_Generator, self).__init__()
+
+        # self.noise_dim = noise_dim
+        # self.label_dim = label_dim
+        self.output_dim = output_dim
+
+        def block(in_dim, out_dim, normalize=True):
+            layers = [nn.Linear(in_dim, out_dim)]
+            if normalize:
+                layers.append(nn.BatchNorm1d(out_dim, 0.8))
+            layers.append(nn.LeakyReLU(0.2, inplace=True))
+            return layers
+
+        self.noise_block = nn.Sequential(
+            *block(noise_dim, hidden_dim_base, normalize=False)
+            )
+        self.label_block = nn.Sequential(
+            *block(label_dim, hidden_dim_base, normalize=False)
+            )
+
+        self.sequence = nn.Sequential(
+            *block(2*hidden_dim_base, 2*hidden_dim_base),
+            *block(2*hidden_dim_base, 4*hidden_dim_base),
+            *block(4*hidden_dim_base, 8*hidden_dim_base),
+            nn.Linear(8*hidden_dim_base, output_dim)
+            #nn.Tanh()
+        )
+
+    def forward(self, z, y):
+        z = self.noise_block(z)
+        y = self.label_block(y)
+
+        out = torch.cat([z, y], dim=1)
+        out = self.sequence(out)
+        # out = out.view(out.size(0), self.output_dim)
+        return out
+
+class CGAN_Discriminator(nn.Module):
+    def __init__(self, sample_dim, label_dim, hidden_dim_base):
+        super(CGAN_Discriminator, self).__init__()
+
+        # self.sample_dim = sample_dim
+        # self.label_dim = label_dim
+
+        def block(in_dim, out_dim):
+            layers = [nn.Linear(in_dim, out_dim)]
+            layers.append(nn.LeakyReLU(0.2, inplace=True))
+            return layers
+
+        self.sample_block = nn.Sequential(
+            *block(sample_dim, 2*hidden_dim_base)
+            )
+        self.label_block = nn.Sequential( 
+            *block(label_dim, 2*hidden_dim_base)
+            )
+
+        self.sequence = nn.Sequential(
+            nn.Linear(4*hidden_dim_base, 2*hidden_dim_base),
+            nn.Dropout(0.4),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Linear(2*hidden_dim_base, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x, y):
+        x = self.sample_block(x)
+        y = self.label_block(y)
+        out = torch.cat([x, y], dim=1)
+        validity = self.sequence(out)
+        return validity

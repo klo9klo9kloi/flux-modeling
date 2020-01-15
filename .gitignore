@@ -14,4 +14,6 @@ viz_GAM/
 WSA/
 final_products/
 site_visualization.py
-
+cgan_out/
+cgan_viz/
+gan_test/

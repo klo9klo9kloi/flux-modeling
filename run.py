@@ -1,5 +1,8 @@
 import os
 import sys
+import torch
+import random
+import numpy as np
 from processing_utils import get_training_params, get_zip_info, generate_variability_graph, generate_generalizability_chart, generate_r2_chart, generate_weight_variance_chart, generate_universality_chart
 from train_fluxnet_local import train_on_site
 from functools import partial
@@ -12,8 +15,8 @@ from multiprocessing import Pool, Manager
 parallel_true_values = ["True", "true", "T", "t"]
 
 def universality(path_to_config_file, num_iter, site_type, extras=""):
-    num_iter = int(num_iter)
-    test_universality(path_to_config_file, site_type, num_iter)
+    # num_iter = int(num_iter)
+    # test_universality(path_to_config_file, site_type, num_iter)
     config = get_training_params(path_to_config_file)
     generate_universality_chart(site_type, config['out'], config['viz'], config['model_type'], extras)
 
@@ -33,16 +36,16 @@ def weight_variability(path_to_data_directory, path_to_config_file, parallel, nu
 
 
 def generalizability(path_to_data_directory, path_to_config_file, parallel, num_iter, site_type, extras=""):
-    num_iter = int(num_iter)
-    parallel = (parallel in parallel_true_values)
-    zip_file_info_for_preprocessing = get_zip_info(path_to_data_directory)
-    print(zip_file_info_for_preprocessing)
-    if parallel:
-        with Pool() as p:
-           p.map(partial(test_generalizability, path_to_config_file=path_to_config_file, num_iter=num_iter, fluxnet_site_type=site_type), zip_file_info_for_preprocessing)
-    else:
-        for zf in zip_file_info_for_preprocessing:
-            test_generalizability(zf, path_to_config_file, site_type, num_iter)
+    # num_iter = int(num_iter)
+    # parallel = (parallel in parallel_true_values)
+    # zip_file_info_for_preprocessing = get_zip_info(path_to_data_directory)
+    # print(zip_file_info_for_preprocessing)
+    # if parallel:
+    #     with Pool() as p:
+    #        p.map(partial(test_generalizability, path_to_config_file=path_to_config_file, num_iter=num_iter, fluxnet_site_type=site_type), zip_file_info_for_preprocessing)
+    # else:
+    #     for zf in zip_file_info_for_preprocessing:
+    #         test_generalizability(zf, path_to_config_file, site_type, num_iter)
     config = get_training_params(path_to_config_file)
     generate_generalizability_chart(site_type, config['out'], config['viz'], config['model_type'], extras)
 
@@ -76,7 +79,14 @@ def train(path_to_data_directory, path_to_config_file, parallel):
 
 
 if __name__ == '__main__':
-    run_type, args = sys.argv[1], sys.argv[2:]
+	assert(len(sys.argv) >= 4)
+
+    seed_num, run_type, args = int(sys.argv[1]), sys.argv[2], sys.argv[3:]
+
+    random.random.seed(seed_num)
+    np.random.seed(seed_num)
+    torch.manual_seed(seed_num)
+
     if run_type == 'train':
         train(*args)
     elif run_type == 'test':
@@ -88,7 +98,7 @@ if __name__ == '__main__':
     elif run_type == 'weight_viz':
     	weight_variability(*args)
     else:
-        print("unrecognized command")
+        print("unrecognized run type command")
 
 
 

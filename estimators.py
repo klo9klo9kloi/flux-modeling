@@ -1,10 +1,11 @@
-from models import SimpleLSTM, SimpleANN, TimeseriesSampler
-import numpy as np 
+import numpy as np
 import torch.nn as nn
 import torch
+from torch.autograd import Variable
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from sklearn.base import BaseEstimator
+from models import SimpleLSTM, SimpleANN, TimeseriesSampler, CGAN_Generator, CGAN_Discriminator
 
 def mda(actual: np.ndarray, predicted: np.ndarray):
     """ Mean Directional Accuracy """
@@ -76,7 +77,7 @@ class SimpleANNRegressor(SimpleRegressorBase):
 		self.tol = 0
 		self.plateau = 0
 
-		if X.shape[1] > self.hidden_dim:
+		if X.shape[1] > self.input_dim:
 			X = X[:, :-1]
 			print("time_index column passed into ANN estimator during training; disregarding last input feature column")
 
@@ -128,6 +129,9 @@ class SimpleANNRegressor(SimpleRegressorBase):
 		return self
 
 	def predict(self, X, **kwargs):
+		if X.shape[1] > self.input_dim:
+			X = X[:, :-1]
+			print("time_index column passed into ANN estimator during scoring; disregarding last input feature column")
 		with torch.no_grad():			
 			is_cuda = torch.cuda.is_available()
 			if is_cuda:
@@ -143,9 +147,7 @@ class SimpleANNRegressor(SimpleRegressorBase):
 		return predictions
 
 	def score(self, X, y, **kwargs):
-		n = X.shape[0]
-
-		if X.shape[1] > self.hidden_dim:
+		if X.shape[1] > self.input_dim:
 			X = X[:, :-1]
 			print("time_index column passed into ANN estimator during scoring; disregarding last input feature column")
 
@@ -165,7 +167,7 @@ class SimpleLSTMRegressor(SimpleRegressorBase):
 	def __init__(self, input_dim, output_dim, hidden_dim=512, n_layers=1, lr=0.05, batch_size=1, seq_len = 5, epochs = 50, threshold=1e-5, 
 					clip = 5, scoring='mse', regularization_param=0):
 		super().__init__(input_dim=input_dim, output_dim=output_dim, hidden_dim=hidden_dim, lr=lr, 
-					batch_size=batch_size, epochs=epochs, threshold=threshold, regularization_param=0)
+					batch_size=batch_size, epochs=epochs, threshold=threshold, regularization_param=regularization_param, scoring=scoring)
 		self.sequence_length = seq_len
 		self.clip = clip
 		self.n_layers = n_layers
@@ -230,6 +232,7 @@ class SimpleLSTMRegressor(SimpleRegressorBase):
 			device = torch.device("cuda")
 		else:
 			device = torch.device("cpu")
+
 		self.model.double()
 		self.model.to(device)
 
@@ -348,10 +351,150 @@ class SimpleLSTMRegressor(SimpleRegressorBase):
 		else:
 			return -mean_squared_error(truth, predictions)
 
+class SimpleCGANRegressor(SimpleRegressorBase):
+	# input_dim = dim(x)
+	# output_dim = dim(y)
+	# noise_dim = dim(z)
+	def __init__(self, input_dim, output_dim, hidden_dim='match', lr=0.05, batch_size=1, epochs=20, threshold=1e-5, regularization_param = 0, scoring='mse', noise_dim=1):
+		super().__init__(input_dim=input_dim, output_dim=output_dim, hidden_dim=hidden_dim, lr=lr, 
+					batch_size=batch_size, epochs=epochs, threshold=threshold, regularization_param=regularization_param, scoring=scoring)
+		self.noise_dim = noise_dim
+
+	def get_params(self, deep=False):
+		params = super().get_params(deep=deep)
+		params['noise_dim'] = self.noise_dim
+		return params
+
+	def set_params(self, **params):
+		self = super().set_params(**params)
+		self.noise_dim = params.get('noise_dim', self.noise_dim)
+		return self
+
+
+	def fit(self, X, y, **kwargs):
+		print()
+		print('----------------------------------------')
+		print('Training with parameters: ' + str(self.get_params()))
+
+		self.generator = CGAN_Generator(self.noise_dim, self.input_dim, self.output_dim, self.hidden_dim)
+		self.discriminator = CGAN_Discriminator(self.output_dim, self.input_dim, self.hidden_dim)
+
+		if X.shape[1] > self.input_dim:
+			X = X[:, :-1]
+			print("time_index column passed into CGAN estimator during training; disregarding last input feature column")
+
+		all_training_data = torch.from_numpy(X.astype('float64'))
+		all_training_labels = torch.from_numpy(y.astype('float64'))
+		data = TensorDataset(all_training_data, all_training_labels)
+		loader = DataLoader(data, shuffle=True, batch_size=self.batch_size)
+
+		is_cuda = torch.cuda.is_available()
+		DoubleTensor = torch.cuda.DoubleTensor if is_cuda else torch.DoubleTensor
+
+		if is_cuda:
+			device = torch.device("cuda")
+		else:
+			device = torch.device("cpu")
+
+
+		self.generator.double()
+		self.generator.to(device)
+
+		self.discriminator.double()
+		self.discriminator.to(device)
+
+		#set up loss function and optimizer
+		criterion = nn.BCELoss()
+		g_optim = torch.optim.Adam(self.generator.parameters(), lr=self.lr, weight_decay=self.regularization_param)
+		d_optim = torch.optim.Adam(self.discriminator.parameters(), lr=self.lr, weight_decay=self.regularization_param)
+		
+		# train
+		for i in range(self.epochs):
+			for b, (inpts, lbls) in enumerate(loader):
+				valid = Variable(DoubleTensor(inpts.size(0), 1).fill_(1.0), requires_grad=False)
+				fake = Variable(DoubleTensor(inpts.size(0), 1).fill_(0.0), requires_grad=False)
+				'''
+				Train Generator
+				'''
+				g_optim.zero_grad()
+				z = Variable(DoubleTensor(np.random.normal(0, 1, (inpts.size(0), self.noise_dim))))
+				generated_labels = self.generator(z, inpts)
+				validity = self.discriminator(generated_labels, inpts)
+				
+				g_loss = criterion(validity, valid)
+				g_loss.backward()
+				g_optim.step()
+
+				''' 
+				Train Discriminator
+				'''
+				d_optim.zero_grad()
+
+				# get loss on fake labels
+				validity = self.discriminator(generated_labels.detach(), inpts)
+				d_fake_loss = criterion(validity, fake)
+
+				# get loss on real labels
+				validity = self.discriminator(lbls, inpts)
+				d_real_loss = criterion(validity, valid)
+
+				# backprop
+				d_loss = 0.5 * (d_real_loss + d_fake_loss)
+				d_loss.backward()
+				d_optim.step()
+
+				print(
+		        	"[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
+		        	% (i, self.epochs, b, len(loader), d_loss.item(), g_loss.item())
+	        	)
+		self.trained_for = self.epochs-1
+		return self
+
+	def predict(self, X, **kwargs):
+		if X.shape[1] > self.input_dim:
+			X = X[:, :-1]
+			print("time_index column passed into CGAN estimator during scoring; disregarding last input feature column")
+		with torch.no_grad():			
+			is_cuda = torch.cuda.is_available()
+			if is_cuda:
+				device = torch.device("cuda")
+			else:
+				device = torch.device("cpu")
+			self.generator.double()
+			self.generator.to(device)
+			self.generator.eval()
+
+			DoubleTensor = torch.cuda.DoubleTensor if is_cuda else torch.DoubleTensor
+			z = Variable(DoubleTensor(np.random.normal(0, 1, (X.shape[0], self.noise_dim))))
+			x = torch.from_numpy(X.astype('float64')).to(device)
+
+			out = self.generator(z, x)
+			predictions = out.squeeze().tolist()
+		return predictions
+
+	def score(self, X, y, **kwargs):
+		if X.shape[1] > self.hidden_dim:
+			X = X[:, :-1]
+			print("time_index column passed into CGAN estimator during scoring; disregarding last input feature column")
+
+		predictions = np.nan_to_num(np.array(self.predict(X, **kwargs), dtype='float64'))
+		truth = np.nan_to_num(y)
+		if self.scoring == 'r2':
+			return r2_score(truth, predictions)
+		elif self.scoring == 'mda':
+			return mda(truth, predictions)
+		elif self.scoring == 'l1':
+			return -mean_absolute_error(truth, predictions)
+		else:
+			return -mean_squared_error(truth, predictions)
+
 def get_model_type(model_type):
     if model_type == 'ann':
         return SimpleANNRegressor
     elif model_type == 'lstm':
         return SimpleLSTMRegressor
+    elif model_type == 'cgan':
+    	return SimpleCGANRegressor
     else:
         raise ValueError('unrecognized model_type argument: ' + str(config['model_type']))
+

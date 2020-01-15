@@ -38,7 +38,6 @@ def get_training_params(path_to_file):
         val_size = float(f.readline())
         test_size = float(f.readline())
         offset = int(f.readline())
-        num_iter = int(f.readline())
         out_dir = f.readline().rstrip()
         viz_dir = f.readline().rstrip()
         
@@ -52,7 +51,6 @@ def get_training_params(path_to_file):
         train_params['val_size'] = val_size
         train_params['test_size'] = test_size
         train_params['offset'] = offset
-        train_params['n'] = num_iter
         train_params['out'] = out_dir
         train_params['viz'] = viz_dir
     return train_params
@@ -103,7 +101,7 @@ def preprocess(target_dir, site_name, set_type, year_range, something, granulari
     # add remote sensing data
     fpar_frame = get_avg_fpar_frame(site_name)
 
-    frame = pd.merge(frame, fpar_frame, how='left', on='TIMESTAMP')
+    frame = pd.merge(frame, fpar_frame, how='inner', on='TIMESTAMP')
     variables.append(fAPAR_VAR_NAME)
 
     # we do this at the end to ensure its the last one in the list for processing purposes
