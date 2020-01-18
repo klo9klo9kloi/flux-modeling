@@ -5,6 +5,12 @@ from torch.utils.data.sampler import Sampler
 import random
 
 class SimpleANN(nn.Module):
+    """A simple single-layer perceptron with specified dimensions
+
+        input_size (int)
+        output_size (int)
+        hidden_dim (int)
+    """
     def __init__(self, input_size, output_size, hidden_dim):
         super(SimpleANN, self).__init__()
         self.input = nn.Linear(input_size, hidden_dim)
@@ -17,6 +23,14 @@ class SimpleANN(nn.Module):
         return self.output(F.relu(hidden_state)).view(batch_size, -1)
 
 class SimpleLSTM(nn.Module):
+    """A simple LSTM architecture with specified dimensions, number of recurrent layers, and dropout probability
+
+        input_size (int)
+        output_size (int)
+        hidden_dim (int)
+        n_layers (int)
+        drop_prob (float)
+    """
     def __init__(self, input_size, output_size, hidden_dim, n_layers, drop_prob=0.0):
         super(SimpleLSTM, self).__init__()
         self.output_size = output_size
@@ -44,6 +58,9 @@ class TimeseriesSampler(Sampler):
     	gaps in the time_index
 
     	time_index (numpy.Array)
+        window_size (int)
+        step_size (int)
+        shuffle (boolean)
     """
     def __init__(self, time_index, window_size=5, step_size=1, shuffle=False):
         self.time_index = time_index
@@ -112,9 +129,6 @@ class CGAN_Generator(nn.Module):
 class CGAN_Discriminator(nn.Module):
     def __init__(self, sample_dim, label_dim, hidden_dim_base):
         super(CGAN_Discriminator, self).__init__()
-
-        # self.sample_dim = sample_dim
-        # self.label_dim = label_dim
 
         def block(in_dim, out_dim):
             layers = [nn.Linear(in_dim, out_dim)]

@@ -15,12 +15,30 @@ from multiprocessing import Pool, Manager
 parallel_true_values = ["True", "true", "T", "t"]
 
 def universality(path_to_config_file, num_iter, site_type, extras=""):
-    # num_iter = int(num_iter)
-    # test_universality(path_to_config_file, site_type, num_iter)
+	"""Tests the universality of a model by training on all data 
+	from all sites of the same type and testing on each individual site.
+
+	Keyword arguments:
+	path_to_config_file -- relative path to config file (str)
+	num_iter -- number of test iterations (int)
+	site_type -- FLUXNET site type (str)
+	extras -- additional figure title text
+	"""
+    num_iter = int(num_iter)
+    test_universality(path_to_config_file, site_type, num_iter)
     config = get_training_params(path_to_config_file)
     generate_universality_chart(site_type, config['out'], config['viz'], config['model_type'], extras)
 
 def weight_variability(path_to_data_directory, path_to_config_file, parallel, num_iter, extras=""):
+	"""Quantifies the variability of a model's learned weights.
+
+	Keyword arguments:
+	path_to_data_directory -- relative path to directory containing FLUXNET zip files (str)
+	path_to_config_file -- relative path to config file (str)
+	parallel -- whther to compute in parallel (boolean)
+	num_iter -- number of test iterations (int)
+	extras -- additional figure title text
+	"""
     num_iter = int(num_iter)
     parallel = (parallel in parallel_true_values)
     zip_file_info_for_preprocessing = get_zip_info(path_to_data_directory)
@@ -36,20 +54,40 @@ def weight_variability(path_to_data_directory, path_to_config_file, parallel, nu
 
 
 def generalizability(path_to_data_directory, path_to_config_file, parallel, num_iter, site_type, extras=""):
-    # num_iter = int(num_iter)
-    # parallel = (parallel in parallel_true_values)
-    # zip_file_info_for_preprocessing = get_zip_info(path_to_data_directory)
-    # print(zip_file_info_for_preprocessing)
-    # if parallel:
-    #     with Pool() as p:
-    #        p.map(partial(test_generalizability, path_to_config_file=path_to_config_file, num_iter=num_iter, fluxnet_site_type=site_type), zip_file_info_for_preprocessing)
-    # else:
-    #     for zf in zip_file_info_for_preprocessing:
-    #         test_generalizability(zf, path_to_config_file, site_type, num_iter)
+	"""Tests the generalizability of a model by training on data 
+	from one site and testing on all other sites of the same type.
+
+	Keyword arguments:
+	path_to_data_directory -- relative path to directory containing FLUXNET zip files (str)
+	path_to_config_file -- relative path to config file (str)
+	parallel -- whther to compute in parallel (boolean)
+	num_iter -- number of test iterations (int)
+	site_type -- FLUXNET site type (str)
+	extras -- additional figure title text
+	"""
+    num_iter = int(num_iter)
+    parallel = (parallel in parallel_true_values)
+    zip_file_info_for_preprocessing = get_zip_info(path_to_data_directory)
+    print(zip_file_info_for_preprocessing)
+    if parallel:
+        with Pool() as p:
+           p.map(partial(test_generalizability, path_to_config_file=path_to_config_file, num_iter=num_iter, fluxnet_site_type=site_type), zip_file_info_for_preprocessing)
+    else:
+        for zf in zip_file_info_for_preprocessing:
+            test_generalizability(zf, path_to_config_file, site_type, num_iter)
     config = get_training_params(path_to_config_file)
     generate_generalizability_chart(site_type, config['out'], config['viz'], config['model_type'], extras)
 
 def performance(path_to_data_directory, path_to_config_file, parallel, num_iter, extras=""):
+	"""Evaluates the basic performance of a model on specified test sites.
+
+	Keyword arguments:
+	path_to_data_directory -- relative path to directory containing FLUXNET zip files (str)
+	path_to_config_file -- relative path to config file (str)
+	parallel -- whther to compute in parallel (boolean)
+	num_iter -- number of test iterations (int)
+	extras -- additional figure title text
+	"""
     num_iter = int(num_iter)
     parallel = (parallel in parallel_true_values)
     zip_file_info_for_preprocessing = get_zip_info(path_to_data_directory)
@@ -66,6 +104,14 @@ def performance(path_to_data_directory, path_to_config_file, parallel, num_iter,
     generate_r2_chart(zip_file_info_for_preprocessing, config['out'], config['viz'], config['model_type'], extras)
 
 def train(path_to_data_directory, path_to_config_file, parallel):
+	"""Tests the generalizability of a model by training on data 
+	from one site and testing on all other sites of the same type.
+
+	Keyword arguments:
+	path_to_data_directory -- relative path to directory containing FLUXNET zip files (str)
+	path_to_config_file -- relative path to config file (str)
+	parallel -- whther to compute in parallel (boolean)
+	"""
     zip_file_info_for_preprocessing = get_zip_info(path_to_data_directory)
     parallel = (parallel in parallel_true_values)
     print(zip_file_info_for_preprocessing)
@@ -80,25 +126,23 @@ def train(path_to_data_directory, path_to_config_file, parallel):
 
 if __name__ == '__main__':
 	assert(len(sys.argv) >= 4)
+	seed_num, run_type, args = int(sys.argv[1]), sys.argv[2], sys.argv[3:]
+	random.seed(seed_num)
+	np.random.seed(seed_num)
+	torch.manual_seed(seed_num)
 
-    seed_num, run_type, args = int(sys.argv[1]), sys.argv[2], sys.argv[3:]
-
-    random.random.seed(seed_num)
-    np.random.seed(seed_num)
-    torch.manual_seed(seed_num)
-
-    if run_type == 'train':
-        train(*args)
-    elif run_type == 'test':
-    	performance(*args)
-    elif run_type == "gen":
-        generalizability(*args)
-    elif run_type == 'uni':
-        universality(*args)
-    elif run_type == 'weight_viz':
-    	weight_variability(*args)
-    else:
-        print("unrecognized run type command")
+	if run_type == 'train':
+		train(*args)
+	elif run_type == 'test':
+		performance(*args)
+	elif run_type == "gen":
+		generalizability(*args)
+	elif run_type == 'uni':
+		universality(*args)
+	elif run_type == 'weight_viz':
+		weight_variability(*args)
+	else:
+		print("unrecognized run type command")
 
 
 

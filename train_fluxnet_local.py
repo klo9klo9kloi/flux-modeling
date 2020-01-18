@@ -5,6 +5,17 @@ from estimators import get_model_type
 import numpy as np
 
 def train_on_site(site_zip_info, path_to_config_file):
+    """Train a model with the given configurations using data from the specified site.
+    General pipeline:
+        - preprocess data 
+        - hyperparameter search
+        - scoring
+        - graping
+
+    Keyword arguments:
+    site_zip_info -- zipfile information about specified site (tup)
+    path_to_config_file -- relative path to config file (str)
+    """
     config = get_training_params(path_to_config_file)
     train_labels = [l + '_train' for l in config['labels']] #used to identify proper labels to be used for training
 

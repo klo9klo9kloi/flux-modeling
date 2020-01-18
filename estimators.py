@@ -418,6 +418,10 @@ class SimpleCGANRegressor(SimpleRegressorBase):
 				'''
 				g_optim.zero_grad()
 				z = Variable(DoubleTensor(np.random.normal(0, 1, (inpts.size(0), self.noise_dim))))
+
+				inpts = inpts.to(device)
+				lbls = lbls.to(device)
+
 				generated_labels = self.generator(z, inpts)
 				validity = self.discriminator(generated_labels, inpts)
 				

@@ -26,6 +26,12 @@ mat_naming_convention = '_MOD15A2H_Fpar_500m.mat'
 granularity_to_string = {'YY' : 'Years', 'MM': 'Months', 'WW': 'Weeks', 'DD': 'Days', 'HH': 'Hours'}
 
 def get_training_params(path_to_file):
+    """Reads in parameters for model training from the specified configuration file
+    and returns a key-value mapping.
+
+    Keyword arguments:
+    path_to_file -- relative path to configuration file (str)
+    """
     train_params = {}
     with open(path_to_file) as f:
         model_type = f.readline().rstrip()
@@ -56,10 +62,12 @@ def get_training_params(path_to_file):
     return train_params
 
 def get_zip_name(target_dir, site_name, year_range, something):
+    """Returns the absolute path to target zip file."""
     return working_directory + '/' + target_dir + '/FLX_' + site_name + '_FLUXNET2015_FULLSET_' \
             + year_range + '_' + something + '.zip'
 
 def load_csv_from_zip(target_dir, site_name, set_type, year_range, something, granularity):
+    """Loads in data from target csv file."""
     zf = zipfile.ZipFile(get_zip_name(target_dir, site_name, year_range, something))
     filename = "FLX_" + site_name + "_FLUXNET2015_" + set_type + "_" + granularity + "_" \
                 + year_range + "_" + something + ".csv"
@@ -68,8 +76,22 @@ def load_csv_from_zip(target_dir, site_name, set_type, year_range, something, gr
     zf.close()
     return frame
 
-# granularity = 'YY', 'MM', 'WW', 'DD', 'HH' for yearly, monthly, weekly, daily, hourly respectively
 def preprocess(target_dir, site_name, set_type, year_range, something, granularity, target_variables, backup_variables, labels, debug_output, offset=0):
+    """Top-level function for preprocessing data from a specified csv file.
+
+    Keyword arguments:
+    target_dir -- relative path to directory containing desired data (str)
+    site_name -- FLUXNET site name (str)
+    set_type -- FULLSET or SUBSET (str)
+    year_range -- range of years formated as YYYY-YYYY (str)
+    something -- trailing numbers for identifying zip files (str)
+    granularity -- YY, MM, WW, DD, HH for yearly, monthly, weekly, daily, hourly respectively (str)
+    target_variables -- list of FLUXNET variables to use as predictors (List[str])
+    backup_variables -- mapping of back-up of FLUXNET variables to use (dict)
+    labels -- list of target FLUXNET response variables (List[str])
+    debug_output -- print helpful output for debugging (bool)
+    offset -- days to offset training labels by; used for forecasting (int)
+    """
     frame = load_csv_from_zip(target_dir, site_name, set_type, year_range, something, granularity)
     print("Total rows: " + str(len(frame.index)))
     print()
@@ -109,12 +131,12 @@ def preprocess(target_dir, site_name, set_type, year_range, something, granulari
 
     return frame, variables
 
-# data: DataFrame
-# variable: String
 def validate_variable(data, variable):
+    """Returns whether the desired variable should be used for training."""
     return (variable in data.columns) and (data[variable].value_counts().get('-9999', 0) <= len(data.index)/2)
 
 def validate_frame(df, variables):
+    """Returns whether all listed variables are valid within the frame."""
     print(len(df.index))
     assert(len(df.index) >= 100)
     for v in variables:
@@ -123,6 +145,11 @@ def validate_frame(df, variables):
     return True
 
 def get_zip_info(target_dir):
+    """Returns zip file information from target directory.
+
+    Keyword arguments:
+    target_dir -- relative path to directory (str)
+    """
     all_zip_files = glob.glob(working_directory + '/' + target_dir + "/*.zip")
     regex_tuples = []
     for zf in all_zip_files:
@@ -131,6 +158,7 @@ def get_zip_info(target_dir):
     return regex_tuples
 
 def get_mat_info():
+    """Returns all relevant mat filenames from fAPAR_directory."""
     all_mat_files = glob.glob(working_directory + '/' + fAPAR_directory + "/*.mat")
     file_names = []
     for mat in all_mat_files:
@@ -138,7 +166,7 @@ def get_mat_info():
     return file_names
 
 def get_avg_fpar_frame(site_name):
-    # mat = loadmat('modisfAPAR/' + site_name + mat_naming_convention)['FparData']
+    """Returns an interpolated time-series of average fpar for the specified FLUXNET site."""
     mat = loadmat(working_directory + '/modisfAPAR/' + site_name + mat_naming_convention)['FparData']
     df = pd.DataFrame(data=mat, columns=['year', 'DOY', 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25])
 
@@ -169,6 +197,7 @@ def get_avg_fpar_frame(site_name):
     return new_frame
 
 def generate_visualizations(time_index, ground_truth, test_pred, train_pred, granularity, start_date, pred_label, site_name, visualizations_directory):
+    """Generates a ground truth vs predictions graph and residuals graph."""
     fig = plt.figure()
     plt.title('Predictions vs. Ground Truth for '+ site_name)
     plt.xlabel(granularity_to_string[granularity] + ' since ' + start_date)
@@ -194,6 +223,7 @@ def generate_visualizations(time_index, ground_truth, test_pred, train_pred, gra
     plt.close()
 
 def generate_file_output(output_strings, site_name, training_output_directory):
+    """Write training output to text file."""
     if not os.path.exists(working_directory + '/' + training_output_directory):
         os.makedirs(working_directory + '/' + training_output_directory)
 
@@ -203,6 +233,7 @@ def generate_file_output(output_strings, site_name, training_output_directory):
         f.close()
 
 def generate_weights_visualization(model, variables, site_name, visualizations_directory):
+    """Generate a heatmap for all learned weights of the LSTM."""
     param_list = list(model.model.parameters())
     dim = model.model.hidden_dim
     input_weights = param_list[0].data.cpu()
@@ -245,6 +276,7 @@ def generate_weights_visualization(model, variables, site_name, visualizations_d
 
 
 def generate_variability_graph(zip_info, training_output_directory, visualizations_directory, model_type, extras=""):
+    """Generate a ground truth vs prediction graph with standard error bars."""
     site_name = zip_info[1]
 
     path = training_output_directory + '/predictions/' + site_name + '.txt'
@@ -273,6 +305,7 @@ def generate_variability_graph(zip_info, training_output_directory, visualizatio
     plt.close()
 
 def generate_r2_chart(zip_infos, training_output_directory, visualizations_directory, model_type, extras=""):
+    """Graph average model R^2 score with standard error bars."""
     site_names = []
     scores = []
     for zf in zip_infos:
@@ -298,20 +331,8 @@ def generate_r2_chart(zip_infos, training_output_directory, visualizations_direc
     plt.savefig(visualizations_directory + '/r2_across_sites.png')
     plt.close()
 
-def fix_prediction_data(zip_infos):
-    for zf in zip_infos:
-        path = training_output_directory + '/predictions/' + zf[1] + '.txt'
-        df = pd.read_csv(path)
-        original_data = load_csv_from_zip(*zf, 'DD')
-        time_index = df.iloc[:,:-1].columns.values.astype('float').astype('int')
-        ground_truth = original_data.iloc[time_index]['GPP_NT_VUT_REF'].astype('float')
-
-        for i in range(len(df.index)):
-            predictions = df.iloc[i, :-1]
-            df.iloc[i, -1] = r2_score(ground_truth, predictions)
-        df.to_csv(path, index=False)
-
 def generate_generalizability_chart(fluxnet_site_type, training_output_directory, visualizations_directory, model_type, extras=""):
+    """Graph the results of generalizability testing with standard error bars."""
     path = working_directory + '/' + training_output_directory + '/' + fluxnet_site_type
 
     all_output_files = glob.glob(path + "/*_generalizability_test.txt")
@@ -349,6 +370,7 @@ def generate_generalizability_chart(fluxnet_site_type, training_output_directory
     plt.close()
 
 def generate_universality_chart(fluxnet_site_type, training_output_directory, visualizations_directory, model_type, extras=""):
+     """Graph the results of universality testing with standard error bars."""
     path = working_directory + '/' + training_output_directory + '/' + fluxnet_site_type
 
     df = pd.read_csv(path + '/universiality_test.txt')
@@ -380,6 +402,7 @@ def generate_universality_chart(fluxnet_site_type, training_output_directory, vi
 
 
 def generate_weight_variance_chart(zip_infos, training_output_directory, visualizations_directory, extras=""):
+     """Graph the results of weight variance quantification with standard error bars."""
     path = working_directory + '/' + training_output_directory + '/weights'
 
     all_output_frame = pd.DataFrame()
