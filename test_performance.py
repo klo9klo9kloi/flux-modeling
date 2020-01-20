@@ -40,7 +40,7 @@ def test_performance(site_zip_info, path_to_config_file, num_iter):
         if config['model_type'] == 'lstm':
             model.fit(X_train, y_train)
             test_pred = ([np.nan] * (model.sequence_length-1) ) + model.predict(X_test)
-        elif config['model_type'] == 'ann':
+        elif config['model_type'] == 'ann' or config['model_type'] == 'cgan':
             model.fit(X_train[:, :-1], y_train)
             test_pred = model.predict(X_test[:, :-1])
         predictions.append(test_pred)
@@ -48,7 +48,7 @@ def test_performance(site_zip_info, path_to_config_file, num_iter):
         model.set_params(scoring='r2')
         if config['model_type'] == 'lstm':
             scores.append(model.score(X_test, y_test))
-        elif config['model_type'] == 'ann':
+        elif config['model_type'] == 'ann' or config['model_type'] == 'cgan':
             scores.append(model.score(X_test[:, :-1], y_test))
         model.set_params(scoring=prev_scoring)
 
