@@ -128,7 +128,7 @@ def preprocess(target_dir, site_name, set_type, year_range, something, granulari
 
     # we do this at the end to ensure its the last one in the list for processing purposes
     variables.append('time_index')
-
+    print("Total rows for training: " + str(len(frame.index)))
     return frame, variables
 
 def validate_variable(data, variable):
@@ -370,9 +370,8 @@ def generate_generalizability_chart(fluxnet_site_type, training_output_directory
     plt.close()
 
 def generate_universality_chart(fluxnet_site_type, training_output_directory, visualizations_directory, model_type, extras=""):
-     """Graph the results of universality testing with standard error bars."""
+    """Graph the results of universality testing with standard error bars."""
     path = working_directory + '/' + training_output_directory + '/' + fluxnet_site_type
-
     df = pd.read_csv(path + '/universiality_test.txt')
 
     order = ['AU-Ade', 'AU-How', 'AU-Gin', 'AU-RDF', 'US-Ton', 'US-SRM']
@@ -402,7 +401,7 @@ def generate_universality_chart(fluxnet_site_type, training_output_directory, vi
 
 
 def generate_weight_variance_chart(zip_infos, training_output_directory, visualizations_directory, extras=""):
-     """Graph the results of weight variance quantification with standard error bars."""
+    """Graph the results of weight variance quantification with standard error bars."""
     path = working_directory + '/' + training_output_directory + '/weights'
 
     all_output_frame = pd.DataFrame()
