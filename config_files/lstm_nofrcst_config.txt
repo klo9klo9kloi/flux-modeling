@@ -1,5 +1,5 @@
 lstm
-[{'hidden_dim': ['match'], 'batch_size': [30, 90], 'epochs': [100], 'seq_len': [5, 15, 30], 'clip': [10], 'lr': [0.005, 0.0005, 0.00005],'regularization_param': [1, 0.1, 0.01, 0.001]}]
+[{'hidden_dim': ['match'], 'batch_size': [30, 90], 'epochs': [2500], 'seq_len': [5, 15, 30], 'clip': [10], 'lr': [0.005, 0.0005, 0.00005],'regularization_param': [1, 0.1, 0.01, 0.001]}]
 5
 ['TA_F', 'SW_IN_F', 'P_F', 'WS_F', 'VPD_F', 'CO2_F', 'SWC_F_MDS_1'] 
 {'TA_F' : 'TA_F_MDS', 'SW_IN_F': 'SW_IN_F_MDS', 'P_F': 'P_F_MDS', 'CO2_F': 'CO2_F_MDS', 'WS_F': 'WS_F_MDS', 'VPD_F': 'VPD_F_MDS'}
