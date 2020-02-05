@@ -319,7 +319,7 @@ def generate_r2_chart(zip_infos, training_output_directory, visualizations_direc
     fig = plt.figure()
     sns.set(style="whitegrid")
     palette = sns.color_palette()
-    ax = sns.barplot(x="site", y="score", data=score_frame, ci="sd", palette={"AU-Gin": palette[3], 'CA-NS3': palette[1], 'CZ-BK1': palette[2], 'US-Ton': palette[4]})
+    ax = sns.barplot(x="site", y="score", data=score_frame, ci="sd")
     ax.grid(False)
     plt.title(model_type.upper() + ' performance across sites ' + extras)
     plt.xlabel("Site")
